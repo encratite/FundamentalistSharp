@@ -8,5 +8,20 @@
 		public Cash Cash { get; set; }
 		public string Currency { get; set; }
 		public int FiscalYearEndMonth { get; set; }
+
+		public float[] GetFeatures()
+		{
+			var expenseFeatures = Expense.GetFeatures();
+			var incomeFeatures = Income.GetFeatures();
+			var revenueFeatures = Revenue.GetFeatures();
+			var cashFeatures = Cash.GetFeatures();
+			var features = Features.Merge(
+				expenseFeatures,
+				incomeFeatures,
+				revenueFeatures,
+				cashFeatures
+			);
+			return features;
+		}
 	}
 }

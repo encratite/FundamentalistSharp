@@ -67,7 +67,7 @@ namespace Fundamentalist.Common
 			}
 		}
 
-		public static List<PriceData> ReadPriceData(CsvReader csvReader)
+		private static List<PriceData> ReadPriceData(CsvReader csvReader)
 		{
 			var priceData = new List<PriceData>();
 			csvReader.Read();
@@ -75,9 +75,9 @@ namespace Fundamentalist.Common
 			var dateTimeNullConverter = new NullConverter<DateTime>();
 			var decimalNullConverter = new NullConverter<decimal>();
 			var longNullConverter = new NullConverter<long>();
+			var getDecimal = (string field) => csvReader.GetField<decimal?>(field, decimalNullConverter);
 			while (csvReader.Read())
 			{
-				var getDecimal = (string field) => csvReader.GetField<decimal?>(field, decimalNullConverter);
 				var priceDataRow = new PriceData
 				{
 					Date = csvReader.GetField<DateTime?>("Date", dateTimeNullConverter),
@@ -95,7 +95,7 @@ namespace Fundamentalist.Common
 			return priceData;
 		}
 
-		public static string ReadFile(string path)
+		private static string ReadFile(string path)
 		{
 			string fullPath = Path.Combine(Configuration.DataDirectory, path);
 			if (!File.Exists(fullPath))

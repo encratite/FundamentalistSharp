@@ -25,5 +25,34 @@
 		public decimal? EffectOfSpecialItemsOnIncomeTaxes { get; set; }
 		public decimal? InterestExpenseNetNonOperating { get; set; }
 		public decimal? BankTotalRevenue { get; set; }
+
+		public float[] GetFeatures()
+		{
+			return Features.Aggregate(
+				IncomeAvailableToComExclExtraOrd,
+				IncomeAvailableToComInclExtraOrd,
+				ProvisionForIncomeTaxes,
+				NetIncomeBeforeTaxes,
+				OtherNet,
+				NetIncomeBeforeExtraItems,
+				MinorityInterest,
+				OperatingIncome,
+				InterestIncExpNetNonOpTotal,
+				NetInterestIncome,
+				InterestInvestIncomeNonOperating,
+				OtherNonOperatingIncomeExpense,
+				InterestExpenseNonOperating,
+				IncomeInclExtraBeforeDistributions,
+				NormalizedIncomeBeforeTaxes,
+				IncomeTaxExImpactOfSpeciaItems,
+				NormalizedIncomeAfterTaxes,
+				NormalizedIncAvailToCom,
+				NetIncomeAfterTaxes,
+				InvestmentIncomeNonOperating,
+				EffectOfSpecialItemsOnIncomeTaxes,
+				InterestExpenseNetNonOperating,
+				BankTotalRevenue
+			);
+		}
 	}
 }

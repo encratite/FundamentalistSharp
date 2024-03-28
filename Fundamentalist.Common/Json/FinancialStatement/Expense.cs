@@ -16,5 +16,25 @@
 		public decimal? SellingGeneralAdminExpenses { get; set; }
 		public decimal? LaborRelatedExpense { get; set; }
 		public decimal? TotalOperatingExpense { get; set; }
+
+		public float[] GetFeatures()
+		{
+			return Features.Aggregate(
+				GrossProfit,
+				SellingGeneralAdminExpensesTotal,
+				UnusualExpenseIncome,
+				ResearchDevelopment,
+				RestructuringCharge,
+				InterestExpenseSupplemental,
+				DepreciationSupplemental,
+				AmortizationOfIntangiblesSupplemental,
+				StockBasedCompensationSupplemental,
+				RentalExpenseSupplemental,
+				ResearchDevelopmentExpSupplemental,
+				SellingGeneralAdminExpenses,
+				LaborRelatedExpense,
+				TotalOperatingExpense
+			);
+		}
 	}
 }

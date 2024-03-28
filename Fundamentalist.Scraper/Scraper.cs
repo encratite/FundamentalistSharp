@@ -9,6 +9,7 @@ namespace Fundamentalist.Scraper
 
 		public void Run()
 		{
+			DownloadIndex();
 			var tickers = GetTickers();
 			foreach (var ticker in tickers)
 			{
@@ -64,6 +65,12 @@ namespace Fundamentalist.Scraper
 		private void DownloadOnly(string uri, string path)
 		{
 			DownloadFile(uri, path, true);
+		}
+
+		private void DownloadIndex()
+		{
+			var indexTicker = CompanyTicker.GetIndexTicker();
+			DownloadPriceData(indexTicker);
 		}
 
 		private List<CompanyTicker> GetTickers()

@@ -19,5 +19,28 @@
 		public decimal? NormalizedEBITDA { get; set; }
 		public decimal? DilutedEPSIncludingExtraOrdItems { get; set; }
 		public decimal? TotalRevenue { get; set; }
+
+		public float[] GetFeatures()
+		{
+			return Features.Aggregate(
+				DpsCommonStockPrimaryIssue,
+				CostOfRevenueTotal,
+				NetSales,
+				CostOfRevenue,
+				BasicNormalizedEPS,
+				DilutedNormalizedEPS,
+				GrossMargin,
+				OperatingMargin,
+				NormalizedEBIT,
+				DilutedWeightedAverageShares,
+				DilutedEPSExcludingExtraOrdItems,
+				BasicWeightedAverageShares,
+				BasicEPSExcludingExtraordinaryItems,
+				BasicEPSIncludingExtraordinaryItems,
+				NormalizedEBITDA,
+				DilutedEPSIncludingExtraOrdItems,
+				TotalRevenue
+			);
+		}
 	}
 }

@@ -17,5 +17,18 @@
 		{
 			return $"{UnderlyingInstrument.DisplayName} ({Type} {Year})";
 		}
+
+		public float[] GetFeatures()
+		{
+			var balanceSheetsFeatures = BalanceSheets.GetFeatures();
+			var cashFlowFeatures = CashFlow.GetFeatures();
+			var incomeStatementFeatures = IncomeStatement.GetFeatures();
+			var features = Features.Merge(
+				balanceSheetsFeatures,
+				cashFlowFeatures,
+				incomeStatementFeatures
+			);
+			return features;
+		}
 	}
 }

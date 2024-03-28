@@ -1,27 +1,42 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Fundamentalist.Common.Json.FinancialStatement
+﻿namespace Fundamentalist.Common.Json.FinancialStatement
 {
 	public class Operating
 	{
-		public decimal NetIncomeStartingLine { get; set; }
-		public decimal DepreciationDepletion { get; set; }
-		public decimal ChangesInWorkingCapital { get; set; }
-		public decimal CashFromOperatingActivities { get; set; }
-		public decimal NetChangeInCash { get; set; }
-		public decimal ForeignExchangeEffects { get; set; }
-		public decimal OtherNonCashItems { get; set; }
-		public decimal NonCashItems { get; set; }
-		public decimal AccountsReceivable { get; set; }
-		public decimal Inventories { get; set; }
-		public decimal OtherLiabilities { get; set; }
-		public decimal DepreciationSupplemental { get; set; }
-		public decimal NetCashBeginningBalance { get; set; }
-		public decimal NetCashEndingBalance { get; set; }
-		public decimal PayableAccrued { get; set; }
+		public decimal? NetIncomeStartingLine { get; set; }
+		public decimal? DepreciationDepletion { get; set; }
+		public decimal? ChangesInWorkingCapital { get; set; }
+		public decimal? CashFromOperatingActivities { get; set; }
+		public decimal? NetChangeInCash { get; set; }
+		public decimal? ForeignExchangeEffects { get; set; }
+		public decimal? OtherNonCashItems { get; set; }
+		public decimal? NonCashItems { get; set; }
+		public decimal? AccountsReceivable { get; set; }
+		public decimal? Inventories { get; set; }
+		public decimal? OtherLiabilities { get; set; }
+		public decimal? DepreciationSupplemental { get; set; }
+		public decimal? NetCashBeginningBalance { get; set; }
+		public decimal? NetCashEndingBalance { get; set; }
+		public decimal? PayableAccrued { get; set; }
+
+		public float[] GetFeatures()
+		{
+			return Features.Aggregate(
+				NetIncomeStartingLine,
+				DepreciationDepletion,
+				ChangesInWorkingCapital,
+				CashFromOperatingActivities,
+				NetChangeInCash,
+				ForeignExchangeEffects,
+				OtherNonCashItems,
+				NonCashItems,
+				AccountsReceivable,
+				Inventories,
+				OtherLiabilities,
+				DepreciationSupplemental,
+				NetCashBeginningBalance,
+				NetCashEndingBalance,
+				PayableAccrued
+			);
+		}
 	}
 }
