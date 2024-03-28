@@ -12,7 +12,17 @@
 
 		public string GetJsonPath(string directory)
 		{
-			return Path.Combine(directory, $"{Ticker}.json");
+			return GetExtensionPath(directory, "json");
+		}
+
+		public string GetCsvPath(string directory)
+		{
+			return GetExtensionPath(directory, "csv");
+		}
+
+		public string GetExtensionPath(string directory, string extension)
+		{
+			return Path.Combine(directory, $"{Ticker}.{extension}");
 		}
 	}
 }
