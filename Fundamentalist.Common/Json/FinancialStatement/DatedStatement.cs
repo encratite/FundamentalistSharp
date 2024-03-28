@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.FinancialStatement
+﻿namespace Fundamentalist.Common.Json.FinancialStatement
 {
-	internal class DatedStatement
+	public class DatedStatement
 	{
 		public string Source { get; set; }
 		public DateTime? SourceDate { get; set; }

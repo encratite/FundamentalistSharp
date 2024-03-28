@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.AutoSuggest
+﻿namespace Fundamentalist.Common.Json.AutoSuggest
 {
-    internal class AutoSuggestStock
+    public class AutoSuggestStock
     {
         public string RT00S { get; set; }
         public string RT00SIndex { get; set; }

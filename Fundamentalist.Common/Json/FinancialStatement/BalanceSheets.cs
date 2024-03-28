@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.FinancialStatement
+﻿namespace Fundamentalist.Common.Json.FinancialStatement
 {
-	internal class BalanceSheets : DatedStatement
+	public class BalanceSheets : DatedStatement
 	{
 		public CurrentAssets CurrentAssets { get; set; }
 		public LongTermAssets LongTermAssets { get; set; }

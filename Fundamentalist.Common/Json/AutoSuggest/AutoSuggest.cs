@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.AutoSuggest
+﻿namespace Fundamentalist.Common.Json.AutoSuggest
 {
-    internal class AutoSuggest
+    public class AutoSuggest
     {
         public int Count { get; set; }
         public AutoSuggestData Data { get; set; }

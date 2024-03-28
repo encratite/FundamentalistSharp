@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper
+﻿namespace Fundamentalist.Common
 {
-	internal class CompanyTicker
+	public class CompanyTicker
 	{
 		public string Company { get; set; }
 		public string Ticker { get; set; }

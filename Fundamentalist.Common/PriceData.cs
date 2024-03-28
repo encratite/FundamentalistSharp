@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper
+﻿namespace Fundamentalist.Common
 {
-	internal class PriceData
+	public class PriceData
 	{
 		public DateTime? Date { get; set; }
 		public decimal? Open { get; set; }

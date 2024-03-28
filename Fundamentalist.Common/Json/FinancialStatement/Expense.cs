@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.FinancialStatement
+﻿namespace Fundamentalist.Common.Json.FinancialStatement
 {
-	internal class Expense
+	public class Expense
 	{
 		public decimal? GrossProfit { get; set; }
 		public decimal? SellingGeneralAdminExpensesTotal { get; set; }

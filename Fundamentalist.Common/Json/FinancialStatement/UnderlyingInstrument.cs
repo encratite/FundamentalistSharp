@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.FinancialStatement
+﻿namespace Fundamentalist.Common.Json.FinancialStatement
 {
-	internal class UnderlyingInstrument
+	public class UnderlyingInstrument
 	{
 		public string InstrumentId { get; set; }
 		public string DisplayName { get; set; }

@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.FinancialStatement
+﻿namespace Fundamentalist.Common.Json.FinancialStatement
 {
-	internal class LongTermLiabilities
+	public class LongTermLiabilities
 	{
 		public decimal LongTermDebtMaturingWithin1Year { get; set; }
 		public decimal LongTermDebtMaturingInYear2 { get; set; }

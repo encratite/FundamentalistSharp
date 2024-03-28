@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Fundamentalist.Scraper.Json.FinancialStatement
+namespace Fundamentalist.Common.Json.FinancialStatement
 {
-	internal class Operating
+	public class Operating
 	{
 		public decimal NetIncomeStartingLine { get; set; }
 		public decimal DepreciationDepletion { get; set; }

@@ -2,34 +2,34 @@
 using CsvHelper.Configuration;
 using CsvHelper.TypeConversion;
 
-namespace Fundamentalist.Scraper
+namespace Fundamentalist.Common
 {
 	internal class NullConverter<T> : ITypeConverter
 	{
-		Exception conversionError;
-		string offendingValue;
+		private Exception _conversionError;
+		private string _offendingValue;
 
 		public Exception GetLastError()
 		{
-			return conversionError;
+			return _conversionError;
 		}
 
 		public string GetOffendingValue()
 		{
-			return offendingValue;
+			return _offendingValue;
 		}
 
 		object ITypeConverter.ConvertFromString(string text, IReaderRow row, MemberMapData memberMapData)
 		{
-			conversionError = null;
-			offendingValue = null;
+			_conversionError = null;
+			_offendingValue = null;
 			try
 			{
 				return (T)Convert.ChangeType(text, typeof(T));
 			}
 			catch (Exception localConversionError)
 			{
-				conversionError = localConversionError;
+				_conversionError = localConversionError;
 			}
 			return null;
 		}

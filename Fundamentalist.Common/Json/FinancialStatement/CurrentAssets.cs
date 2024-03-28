@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Scraper.Json.FinancialStatement
+﻿namespace Fundamentalist.Common.Json.FinancialStatement
 {
-	internal class CurrentAssets
+	public class CurrentAssets
 	{
 		public decimal AccountsReceivableTradeNet { get; set; }
 		public decimal TotalReceivablesNet { get; set; }
