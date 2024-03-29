@@ -1,35 +1,80 @@
-﻿namespace Fundamentalist.Common
+﻿using System.Collections;
+
+namespace Fundamentalist.Common
 {
-	internal static class Features
+	public static class Features
 	{
-		public static float[] Aggregate(params object[] features)
+		public static List<float> GetFeatures(object obj)
 		{
-			if (features.Any(f => f == null))
+			return GetFeatures(obj, obj.GetType());
+		}
+
+		private static List<float> GetFeatures(object obj, Type type)
+		{
+			return
+				GetFeaturesFromEnumerable(obj, type) ??
+				GetFeaturesFromProperties(obj, type);
+		}
+
+		private static List<float> GetFeaturesFromEnumerable(object obj, Type type)
+		{
+			if (typeof(IEnumerable).IsAssignableFrom(type))
+			{
+				var elementType = type.GetElementType() ?? type.GetGenericArguments()[0];
+				var enumerable = (IEnumerable)obj;
+				var enumerator = enumerable.GetEnumerator();
+				var features = new List<float>();
+				while (enumerator.MoveNext())
+				{
+					var currentFeatures = GetFeatures(enumerator.Current, elementType);
+					features.AddRange(currentFeatures);
+				}
+				return features;
+			}
+			else
 				return null;
-			return features.Select(f => Convert.ToSingle(f)).ToArray();
 		}
 
-		public static float[] Merge(params float[][] features)
+		private static List<float> GetFeaturesFromProperties(object obj, Type type)
 		{
-			if (features.Any(f => f == null))
-				return null;
-			IEnumerable<float> output = new float[] { };
-			foreach (var f in features)
-				output = output.Concat(f);
-			return output.ToArray();
-		}
-
-		public static FeatureName[] AggregateNames(params FeatureName[] names)
-		{
-			return names;
-		}
-
-		public static FeatureName[] MergeNames(params FeatureName[][] names)
-		{
-			IEnumerable<FeatureName> output = new FeatureName[] { };
-			foreach (var n in names)
-				output = output.Concat(n);
-			return output.ToArray();
+			var properties = type.GetProperties();
+			var features = new List<float>();
+			foreach (var property in properties)
+			{
+				var propertyType = property.PropertyType;
+				if (
+					obj != null &&
+					propertyType.IsClass &&
+					!propertyType.FullName.StartsWith("System.")
+				)
+				{
+					var userDefinedValue = property.GetValue(obj);
+					var propertyFeatures = GetFeatures(userDefinedValue, propertyType);
+					features.AddRange(propertyFeatures);
+				}
+				if (
+					propertyType.IsGenericType &&
+					propertyType.GetGenericTypeDefinition() == typeof(Nullable<>)
+				)
+				{
+					var nullableType = propertyType.GetGenericArguments()[0];
+					if (
+						nullableType == typeof(decimal) ||
+						nullableType == typeof(int)
+					)
+					{
+						float value = 0.0f;
+						if (obj != null)
+						{
+							var numericValue = property.GetValue(obj);
+							if (numericValue != null)
+								value = Convert.ToSingle(numericValue);
+						}
+						features.Add(value);
+					}
+				}
+			}
+			return features;
 		}
 	}
 }
