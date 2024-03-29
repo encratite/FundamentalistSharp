@@ -2,6 +2,7 @@
 using Fundamentalist.Common.Json.AutoSuggest;
 using Fundamentalist.Common.Json.FinancialStatement;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Fundamentalist.Common
 {
@@ -32,12 +33,12 @@ namespace Fundamentalist.Common
 				json = ReadFile(path);
 			if (json == null)
 				return null;
-			var autoSuggest = JsonHelper.Deserialize<AutoSuggest>(json);
+			var autoSuggest = Utility.Deserialize<AutoSuggest>(json);
 			var stocks = autoSuggest.Data.Stocks;
 			if (stocks.Length == 0)
 				return null;
 			string stockJson = stocks[0];
-			var autoSuggestStock = JsonHelper.Deserialize<AutoSuggestStock>(stockJson);
+			var autoSuggestStock = Utility.Deserialize<AutoSuggestStock>(stockJson);
 			return autoSuggestStock.SecId;
 		}
 
@@ -47,7 +48,15 @@ namespace Fundamentalist.Common
 			string json = ReadFile(path);
 			if (json == null)
 				return null;
-			var financialStatements = JsonHelper.Deserialize<List<FinancialStatement>>(json);
+			var financialStatements = Utility.Deserialize<List<FinancialStatement>>(json);
+			var pattern = new Regex("^10-(Q|K)");
+			var isValidSource = (string source) =>
+			{
+				if (source == null)
+					return false;
+				return pattern.IsMatch(source);
+			};
+			financialStatements = financialStatements.Where(f => isValidSource(f.IncomeStatement?.Source)).ToList();
 			return financialStatements;
 		}
 

@@ -20,7 +20,7 @@ namespace Fundamentalist.Scraper
 					DownloadPriceData(ticker);
 				}
 				else
-					WriteError($"Unable to determine sec ID for \"{ticker}\"");
+					Utility.WriteError($"Unable to determine sec ID for \"{ticker}\"");
 			}
 		}
 
@@ -54,9 +54,9 @@ namespace Fundamentalist.Scraper
 					string message = $"Failed to download \"{fullPath}\"";
 					var httpException = exception.InnerException as HttpRequestException;
 					if (httpException != null)
-						WriteError($"{message} ({httpException.StatusCode})");
+						Utility.WriteError($"{message} ({httpException.StatusCode})");
 					else
-						WriteError($"{message} ({exception.InnerException})");
+						Utility.WriteError($"{message} ({exception.InnerException})");
 				}
 			}
 			return content;
@@ -103,14 +103,6 @@ namespace Fundamentalist.Scraper
 			string uri = $"https://query1.finance.yahoo.com/v7/finance/download/{encodedTicker}?period1=0&period2=2000000000&interval=1d&events=history";
 			string path = ticker.GetCsvPath(Configuration.PriceDataDirectory);
 			DownloadOnly(uri, path);
-		}
-
-		private void WriteError(string message)
-		{
-			var previousColor = Console.ForegroundColor;
-			Console.ForegroundColor = ConsoleColor.Red;
-			Console.WriteLine(message);
-			Console.ForegroundColor = previousColor;
 		}
 	}
 }

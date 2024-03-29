@@ -22,5 +22,18 @@
 				TangibleBookValuePerShareCommonEq
 			);
 		}
+
+		public static FeatureName[] GetFeatureNames(LongTermAssets @this)
+		{
+			return Features.AggregateNames(
+				new FeatureName(nameof(LongTermAssets), nameof(TotalOperatingLeasesSupplemental), @this?.TotalOperatingLeasesSupplemental),
+				new FeatureName(nameof(LongTermAssets), nameof(TotalCurrentAssetsLessInventory), @this?.TotalCurrentAssetsLessInventory),
+				new FeatureName(nameof(LongTermAssets), nameof(QuickRatio), @this?.QuickRatio),
+				new FeatureName(nameof(LongTermAssets), nameof(CurrentRatio), @this?.CurrentRatio),
+				new FeatureName(nameof(LongTermAssets), nameof(NetDebtInclPrefStockMinInterest), @this?.NetDebtInclPrefStockMinInterest),
+				new FeatureName(nameof(LongTermAssets), nameof(TangibleBookValueCommonEquity), @this?.TangibleBookValueCommonEquity),
+				new FeatureName(nameof(LongTermAssets), nameof(TangibleBookValuePerShareCommonEq), @this?.TangibleBookValuePerShareCommonEq)
+			);
+		}
 	}
 }

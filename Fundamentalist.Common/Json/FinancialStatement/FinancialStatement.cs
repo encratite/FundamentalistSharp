@@ -30,5 +30,18 @@
 			);
 			return features;
 		}
+
+		public static FeatureName[] GetFeatureNames(FinancialStatement @this)
+		{
+			var balanceSheetsFeatures = BalanceSheets.GetFeatureNames(@this?.BalanceSheets);
+			var cashFlowFeatures = CashFlow.GetFeatureNames(@this?.CashFlow);
+			var incomeStatementFeatures = IncomeStatement.GetFeatureNames(@this?.IncomeStatement);
+			var features = Features.MergeNames(
+				balanceSheetsFeatures,
+				cashFlowFeatures,
+				incomeStatementFeatures
+			);
+			return features;
+		}
 	}
 }

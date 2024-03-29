@@ -42,5 +42,28 @@
 				OperatingLeasePaymentsDueInYear6AndBeyond
 			);
 		}
+
+		public static FeatureName[] GetFeatureNames(LongTermLiabilities @this)
+		{
+			return Features.AggregateNames(
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingWithin1Year), @this?.LongTermDebtMaturingWithin1Year),
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingInYear2), @this?.LongTermDebtMaturingInYear2),
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingInYear3), @this?.LongTermDebtMaturingInYear3),
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingInYear4), @this?.LongTermDebtMaturingInYear4),
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingInYear5), @this?.LongTermDebtMaturingInYear5),
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingIn2Or3Years), @this?.LongTermDebtMaturingIn2Or3Years),
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingIn4Or5Years), @this?.LongTermDebtMaturingIn4Or5Years),
+				new FeatureName(nameof(LongTermLiabilities), nameof(LongTermDebtMaturingInYear6AndBeyond), @this?.LongTermDebtMaturingInYear6AndBeyond),
+				new FeatureName(nameof(LongTermLiabilities), nameof(TotalLongTermDebtSupplemental), @this?.TotalLongTermDebtSupplemental),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePaymentsDueInYear1), @this?.OperatingLeasePaymentsDueInYear1),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePaymentsDueInYear2), @this?.OperatingLeasePaymentsDueInYear2),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePaymentsDueInYear3), @this?.OperatingLeasePaymentsDueInYear3),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePaymentsDueInYear4), @this?.OperatingLeasePaymentsDueInYear4),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePaymentsDueInYear5), @this?.OperatingLeasePaymentsDueInYear5),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePymtsDuein2Or3Years), @this?.OperatingLeasePymtsDuein2Or3Years),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePymtsDuein45Years), @this?.OperatingLeasePymtsDuein45Years),
+				new FeatureName(nameof(LongTermLiabilities), nameof(OperatingLeasePaymentsDueInYear6AndBeyond), @this?.OperatingLeasePaymentsDueInYear6AndBeyond)
+			);
+		}
 	}
 }

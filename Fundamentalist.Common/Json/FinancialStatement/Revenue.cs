@@ -42,5 +42,28 @@
 				TotalRevenue
 			);
 		}
+
+		public static FeatureName[] GetFeatureNames(Revenue @this)
+		{
+			return Features.AggregateNames(
+				new FeatureName(nameof(Revenue), nameof(DpsCommonStockPrimaryIssue), @this?.DpsCommonStockPrimaryIssue),
+				new FeatureName(nameof(Revenue), nameof(CostOfRevenueTotal), @this?.CostOfRevenueTotal),
+				new FeatureName(nameof(Revenue), nameof(NetSales), @this?.NetSales),
+				new FeatureName(nameof(Revenue), nameof(CostOfRevenue), @this?.CostOfRevenue),
+				new FeatureName(nameof(Revenue), nameof(BasicNormalizedEPS), @this?.BasicNormalizedEPS),
+				new FeatureName(nameof(Revenue), nameof(DilutedNormalizedEPS), @this?.DilutedNormalizedEPS),
+				new FeatureName(nameof(Revenue), nameof(GrossMargin), @this?.GrossMargin),
+				new FeatureName(nameof(Revenue), nameof(OperatingMargin), @this?.OperatingMargin),
+				new FeatureName(nameof(Revenue), nameof(NormalizedEBIT), @this?.NormalizedEBIT),
+				new FeatureName(nameof(Revenue), nameof(DilutedWeightedAverageShares), @this?.DilutedWeightedAverageShares),
+				new FeatureName(nameof(Revenue), nameof(DilutedEPSExcludingExtraOrdItems), @this?.DilutedEPSExcludingExtraOrdItems),
+				new FeatureName(nameof(Revenue), nameof(BasicWeightedAverageShares), @this?.BasicWeightedAverageShares),
+				new FeatureName(nameof(Revenue), nameof(BasicEPSExcludingExtraordinaryItems), @this?.BasicEPSExcludingExtraordinaryItems),
+				new FeatureName(nameof(Revenue), nameof(BasicEPSIncludingExtraordinaryItems), @this?.BasicEPSIncludingExtraordinaryItems),
+				new FeatureName(nameof(Revenue), nameof(NormalizedEBITDA), @this?.NormalizedEBITDA),
+				new FeatureName(nameof(Revenue), nameof(DilutedEPSIncludingExtraOrdItems), @this?.DilutedEPSIncludingExtraOrdItems),
+				new FeatureName(nameof(Revenue), nameof(TotalRevenue), @this?.TotalRevenue)
+			);
+		}
 	}
 }

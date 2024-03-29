@@ -72,5 +72,43 @@
 				PropertyPlantEquipmentTotalNet
 			);
 		}
+
+		public static FeatureName[] GetFeatureNames(CurrentAssets @this)
+		{
+			return Features.AggregateNames(
+				new FeatureName(nameof(CurrentAssets), nameof(AccountsReceivableTradeNet), @this?.AccountsReceivableTradeNet),
+				new FeatureName(nameof(CurrentAssets), nameof(TotalReceivablesNet), @this?.TotalReceivablesNet),
+				new FeatureName(nameof(CurrentAssets), nameof(TotalInventory), @this?.TotalInventory),
+				new FeatureName(nameof(CurrentAssets), nameof(OtherCurrentAssetsTotal), @this?.OtherCurrentAssetsTotal),
+				new FeatureName(nameof(CurrentAssets), nameof(TotalCurrentAssets), @this?.TotalCurrentAssets),
+				new FeatureName(nameof(CurrentAssets), nameof(PropertyPlantEquipmentTotalGross), @this?.PropertyPlantEquipmentTotalGross),
+				new FeatureName(nameof(CurrentAssets), nameof(AccumulatedDepreciationTotal), @this?.AccumulatedDepreciationTotal),
+				new FeatureName(nameof(CurrentAssets), nameof(IntangiblesNet), @this?.IntangiblesNet),
+				new FeatureName(nameof(CurrentAssets), nameof(LongTermInvestments), @this?.LongTermInvestments),
+				new FeatureName(nameof(CurrentAssets), nameof(TotalAssets), @this?.TotalAssets),
+				new FeatureName(nameof(CurrentAssets), nameof(ShortTermInvestments), @this?.ShortTermInvestments),
+				new FeatureName(nameof(CurrentAssets), nameof(CashAndShortTermInvestments), @this?.CashAndShortTermInvestments),
+				new FeatureName(nameof(CurrentAssets), nameof(CashEquivalents), @this?.CashEquivalents),
+				new FeatureName(nameof(CurrentAssets), nameof(GoodwillNet), @this?.GoodwillNet),
+				new FeatureName(nameof(CurrentAssets), nameof(AccountsReceivableTradeGross), @this?.AccountsReceivableTradeGross),
+				new FeatureName(nameof(CurrentAssets), nameof(ReceivablesOther), @this?.ReceivablesOther),
+				new FeatureName(nameof(CurrentAssets), nameof(InventoriesFinishedGoods), @this?.InventoriesFinishedGoods),
+				new FeatureName(nameof(CurrentAssets), nameof(InventoriesWorkInProgress), @this?.InventoriesWorkInProgress),
+				new FeatureName(nameof(CurrentAssets), nameof(InventoriesRawMaterials), @this?.InventoriesRawMaterials),
+				new FeatureName(nameof(CurrentAssets), nameof(OtherCurrentAssets), @this?.OtherCurrentAssets),
+				new FeatureName(nameof(CurrentAssets), nameof(BuildingsGross), @this?.BuildingsGross),
+				new FeatureName(nameof(CurrentAssets), nameof(LandImprovementsGross), @this?.LandImprovementsGross),
+				new FeatureName(nameof(CurrentAssets), nameof(MachineryEquipmentGross), @this?.MachineryEquipmentGross),
+				new FeatureName(nameof(CurrentAssets), nameof(OtherPropertyPlantEquipmentGross), @this?.OtherPropertyPlantEquipmentGross),
+				new FeatureName(nameof(CurrentAssets), nameof(IntangiblesGross), @this?.IntangiblesGross),
+				new FeatureName(nameof(CurrentAssets), nameof(AccumulatedIntangibleAmortization), @this?.AccumulatedIntangibleAmortization),
+				new FeatureName(nameof(CurrentAssets), nameof(LtInvestmentAffiliateCompanies), @this?.LtInvestmentAffiliateCompanies),
+				new FeatureName(nameof(CurrentAssets), nameof(OtherLongTermAssets), @this?.OtherLongTermAssets),
+				new FeatureName(nameof(CurrentAssets), nameof(OtherLongTermAssetsTotal), @this?.OtherLongTermAssetsTotal),
+				new FeatureName(nameof(CurrentAssets), nameof(PayableAccrued), @this?.PayableAccrued),
+				new FeatureName(nameof(CurrentAssets), nameof(AccruedExpenses), @this?.AccruedExpenses),
+				new FeatureName(nameof(CurrentAssets), nameof(PropertyPlantEquipmentTotalNet), @this?.PropertyPlantEquipmentTotalNet)
+			);
+		}
 	}
 }

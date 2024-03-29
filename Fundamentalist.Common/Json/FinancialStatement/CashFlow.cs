@@ -20,5 +20,18 @@
 			);
 			return features;
 		}
+
+		public static FeatureName[] GetFeatureNames(CashFlow @this)
+		{
+			var financingFeatures = Financing.GetFeatureNames(@this?.Financing);
+			var investingFeatures = Investing.GetFeatureNames(@this?.Investing);
+			var operatingFeatures = Operating.GetFeatureNames(@this?.Operating);
+			var features = Features.MergeNames(
+				financingFeatures,
+				investingFeatures,
+				operatingFeatures
+			);
+			return features;
+		}
 	}
 }

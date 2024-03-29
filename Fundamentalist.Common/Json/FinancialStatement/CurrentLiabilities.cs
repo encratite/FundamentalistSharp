@@ -38,5 +38,26 @@
 				AccountsPayable
 			);
 		}
+
+		public static FeatureName[] GetFeatureNames(CurrentLiabilities @this)
+		{
+			return Features.AggregateNames(
+				new FeatureName(nameof(CurrentLiabilities), nameof(OtherCurrentLiabilitiesTotal), @this?.OtherCurrentLiabilitiesTotal),
+				new FeatureName(nameof(CurrentLiabilities), nameof(TotalCurrentLiabilities), @this?.TotalCurrentLiabilities),
+				new FeatureName(nameof(CurrentLiabilities), nameof(LongTermDebt), @this?.LongTermDebt),
+				new FeatureName(nameof(CurrentLiabilities), nameof(CapitalLeaseObligations), @this?.CapitalLeaseObligations),
+				new FeatureName(nameof(CurrentLiabilities), nameof(TotalDebt), @this?.TotalDebt),
+				new FeatureName(nameof(CurrentLiabilities), nameof(TotalLiabilities), @this?.TotalLiabilities),
+				new FeatureName(nameof(CurrentLiabilities), nameof(NotesPayableShortTermDebt), @this?.NotesPayableShortTermDebt),
+				new FeatureName(nameof(CurrentLiabilities), nameof(CurrentPortOfLTDebtCapitalLeases), @this?.CurrentPortOfLTDebtCapitalLeases),
+				new FeatureName(nameof(CurrentLiabilities), nameof(IncomeTaxesPayable), @this?.IncomeTaxesPayable),
+				new FeatureName(nameof(CurrentLiabilities), nameof(OtherCurrentLiabilities), @this?.OtherCurrentLiabilities),
+				new FeatureName(nameof(CurrentLiabilities), nameof(TotalLongTermDebt), @this?.TotalLongTermDebt),
+				new FeatureName(nameof(CurrentLiabilities), nameof(OtherLongTermLiabilities), @this?.OtherLongTermLiabilities),
+				new FeatureName(nameof(CurrentLiabilities), nameof(OtherPayables), @this?.OtherPayables),
+				new FeatureName(nameof(CurrentLiabilities), nameof(OtherLiabilitiesTotal), @this?.OtherLiabilitiesTotal),
+				new FeatureName(nameof(CurrentLiabilities), nameof(AccountsPayable), @this?.AccountsPayable)
+			);
+		}
 	}
 }

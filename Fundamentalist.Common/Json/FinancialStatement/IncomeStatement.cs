@@ -23,5 +23,20 @@
 			);
 			return features;
 		}
+
+		public static FeatureName[] GetFeatureNames(IncomeStatement @this)
+		{
+			var expenseFeatures = Expense.GetFeatureNames(@this?.Expense);
+			var incomeFeatures = Income.GetFeatureNames(@this?.Income);
+			var revenueFeatures = Revenue.GetFeatureNames(@this?.Revenue);
+			var cashFeatures = Cash.GetFeatureNames(@this?.Cash);
+			var features = Features.MergeNames(
+				expenseFeatures,
+				incomeFeatures,
+				revenueFeatures,
+				cashFeatures
+			);
+			return features;
+		}
 	}
 }

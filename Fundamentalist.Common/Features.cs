@@ -18,5 +18,18 @@
 				output = output.Concat(f);
 			return output.ToArray();
 		}
+
+		public static FeatureName[] AggregateNames(params FeatureName[] names)
+		{
+			return names;
+		}
+
+		public static FeatureName[] MergeNames(params FeatureName[][] names)
+		{
+			IEnumerable<FeatureName> output = new FeatureName[] { };
+			foreach (var n in names)
+				output = output.Concat(n);
+			return output.ToArray();
+		}
 	}
 }

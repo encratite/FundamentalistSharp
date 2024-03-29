@@ -32,5 +32,23 @@
 				LongTermDebtNet
 			);
 		}
+
+		public static FeatureName[] GetFeatureNames(Financing @this)
+		{
+			return Features.AggregateNames(
+				new FeatureName(nameof(Financing), nameof(TotalCashDividendsPaid), @this?.TotalCashDividendsPaid),
+				new FeatureName(nameof(Financing), nameof(IssuanceRetirementOfDebtNet), @this?.IssuanceRetirementOfDebtNet),
+				new FeatureName(nameof(Financing), nameof(CashFromFinancingActivities), @this?.CashFromFinancingActivities),
+				new FeatureName(nameof(Financing), nameof(OtherFinancingCashFlow), @this?.OtherFinancingCashFlow),
+				new FeatureName(nameof(Financing), nameof(FinancingCashFlowItems), @this?.FinancingCashFlowItems),
+				new FeatureName(nameof(Financing), nameof(CashDividendsPaidCommon), @this?.CashDividendsPaidCommon),
+				new FeatureName(nameof(Financing), nameof(RepurchaseRetirementOfCommon), @this?.RepurchaseRetirementOfCommon),
+				new FeatureName(nameof(Financing), nameof(CommonStockNet), @this?.CommonStockNet),
+				new FeatureName(nameof(Financing), nameof(IssuanceRetirementOfStockNet), @this?.IssuanceRetirementOfStockNet),
+				new FeatureName(nameof(Financing), nameof(LongTermDebtIssued), @this?.LongTermDebtIssued),
+				new FeatureName(nameof(Financing), nameof(LongTermDebtReduction), @this?.LongTermDebtReduction),
+				new FeatureName(nameof(Financing), nameof(LongTermDebtNet), @this?.LongTermDebtNet)
+			);
+		}
 	}
 }

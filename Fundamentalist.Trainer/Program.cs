@@ -16,7 +16,8 @@ namespace Fundamentalist.Trainer
 			string path = Path.Combine(arguments[0], "..");
 			Directory.SetCurrentDirectory(path);
 			var trainer = new Trainer();
-			trainer.Run();
+			// trainer.Run();
+			trainer.AnalyzeData();
 		}
 	}
 }
