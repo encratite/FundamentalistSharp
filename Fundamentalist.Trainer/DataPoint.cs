@@ -1,8 +1,6 @@
-﻿using Microsoft.ML.Data;
-
-namespace Fundamentalist.Trainer
+﻿namespace Fundamentalist.Trainer
 {
-	internal class DataPoint
+	public class DataPoint
 	{
 		public float[] Features { get; set; }
 		public bool Label { get; set; }

@@ -2,6 +2,8 @@
 using Fundamentalist.Common.Json.FinancialStatement;
 using Microsoft.ML;
 using Microsoft.ML.Data;
+using Microsoft.ML.Trainers;
+using MsgPack.Serialization;
 using System.Diagnostics;
 
 namespace Fundamentalist.Trainer
@@ -13,43 +15,92 @@ namespace Fundamentalist.Trainer
 		private decimal _minOutperformance;
 
 		private List<PriceData> _indexPriceData;
+		private string _dataPointsPath;
 
 		public void Run(int financialStatementCount, int lookAheadDays, decimal minOutperformance)
 		{
 			_financialStatementCount = financialStatementCount;
 			_lookAheadDays = lookAheadDays;
 			_minOutperformance = minOutperformance;
+			_dataPointsPath = Path.Combine(Configuration.DataDirectory, Configuration.DataPointsPath);
 
-			var stopwatch = new Stopwatch();
-			stopwatch.Start();
+			LoadIndex();
+			var dataPoints = GetDataPoints();
+			TrainAndEvaluateModel(dataPoints);
+		}
+
+		private void LoadIndex()
+		{
 			var indexTicker = CompanyTicker.GetIndexTicker();
 			_indexPriceData = DataReader.GetPriceData(indexTicker);
+		}
+
+		private List<DataPoint> GetDataPoints()
+		{
+			var stopwatch = new Stopwatch();
+			stopwatch.Start();
+			var deserializedDataPoints = DeserializeDataPoints();
+			if (deserializedDataPoints != null)
+			{
+				stopwatch.Stop();
+				Console.WriteLine($"Loaded {deserializedDataPoints.Count} data points from \"{_dataPointsPath}\" in {stopwatch.Elapsed.TotalSeconds:F1} s");
+				return deserializedDataPoints;
+			}
 			var tickers = DataReader.GetTickers();
 			var dataPoints = new List<DataPoint>();
-			// tickers = tickers.Take(100).ToList();
 			int tickersProcessed = 0;
 			int goodTickers = 0;
-			foreach (var ticker in tickers)
+			Parallel.ForEach(tickers, ticker =>
 			{
 				tickersProcessed++;
 				var financialStatements = DataReader.GetFinancialStatements(ticker);
 				if (financialStatements == null)
 				{
 					Console.WriteLine($"Discarded {ticker.Ticker} due to lack of financial statements ({tickersProcessed}/{tickers.Count})");
-					continue;
+					return;
 				}
 				var priceData = DataReader.GetPriceData(ticker);
 				if (priceData == null)
 				{
 					Console.WriteLine($"Discarded {ticker.Ticker} due to lack of price data ({tickersProcessed}/{tickers.Count})");
-					continue;
+					return;
 				}
 				GenerateDataPoints(financialStatements, priceData, dataPoints);
 				goodTickers++;
 				Console.WriteLine($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
-			}
+			});
+			SerializeDataPoints(dataPoints);
 			stopwatch.Stop();
 			Console.WriteLine($"Generated {dataPoints.Count} data points ({(decimal)dataPoints.Count / tickers.Count:F1} per ticker) in {stopwatch.Elapsed.TotalSeconds:F1} s, commencing training");
+			return dataPoints;
+		}
+
+		private void SerializeDataPoints(List<DataPoint> dataPoints)
+		{
+			using (var fileStream = new FileStream(_dataPointsPath, FileMode.Create))
+			{
+				var serializer = MessagePackSerializer.Get<List<DataPoint>>();
+				serializer.Pack(fileStream, dataPoints);
+			}
+		}
+
+		private List<DataPoint> DeserializeDataPoints()
+		{
+			if (File.Exists(_dataPointsPath))
+			{
+				using (var fileStream = new FileStream(_dataPointsPath, FileMode.Open))
+				{
+					var serializer = MessagePackSerializer.Get<List<DataPoint>>();
+					var dataPoints = serializer.Unpack(fileStream);
+					return dataPoints;
+				}
+			}
+			else
+				return null;
+		}
+
+		private void TrainAndEvaluateModel(List<DataPoint> dataPoints)
+		{
 			var mlContext = new MLContext();
 			const string FeatureName = "Features";
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
@@ -57,16 +108,21 @@ namespace Fundamentalist.Trainer
 			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var dataView = mlContext.Data.LoadFromEnumerable(dataPoints, schema);
 			var splitData = mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
+			var options = new SdcaLogisticRegressionBinaryTrainer.Options
+			{
+				ConvergenceTolerance = 0.001f,
+				BiasLearningRate = 0.1f,
+				MaximumNumberOfIterations = 100
+			};
 			var estimator =
 				mlContext.Transforms.NormalizeMinMax(FeatureName)
 				.AppendCacheCheckpoint(mlContext)
-				.Append(mlContext.BinaryClassification.Trainers.SdcaLogisticRegression());
-			// var estimator = mlContext.BinaryClassification.Trainers.SdcaLogisticRegression();
-			stopwatch.Reset();
+				.Append(mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(options));
+			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			var model = estimator.Fit(splitData.TrainSet);
 			stopwatch.Stop();
-			Console.WriteLine($"Processed training set in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			var predictions = model.Transform(splitData.TestSet);
 			var metrics = mlContext.BinaryClassification.Evaluate(predictions);
 			Console.WriteLine($"Accuracy: {metrics.Accuracy:P1}");
@@ -116,7 +172,8 @@ namespace Fundamentalist.Trainer
 					Features = features.ToArray(),
 					Label = label
 				};
-				dataPoints.Add(dataPoint);
+				lock (dataPoints)
+					dataPoints.Add(dataPoint);
 			}
 		}
 	}

@@ -8,5 +8,7 @@
 		public const string PriceDataDirectory = "PriceData";
 
 		public const string StocksPath = "Stocks.csv";
+
+		public const string DataPointsPath = "DataPoints.dat";
 	}
 }
