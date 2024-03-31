@@ -1,6 +1,7 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json.FinancialStatement;
 using Microsoft.ML;
+using Microsoft.ML.Data;
 using System.Diagnostics;
 
 namespace Fundamentalist.Trainer
@@ -25,29 +26,42 @@ namespace Fundamentalist.Trainer
 			_indexPriceData = DataReader.GetPriceData(indexTicker);
 			var tickers = DataReader.GetTickers();
 			var dataPoints = new List<DataPoint>();
-			tickers = tickers.Take(20).ToList();
-			int i = 1;
+			// tickers = tickers.Take(100).ToList();
+			int tickersProcessed = 0;
+			int goodTickers = 0;
 			foreach (var ticker in tickers)
 			{
+				tickersProcessed++;
 				var financialStatements = DataReader.GetFinancialStatements(ticker);
 				if (financialStatements == null)
+				{
+					Console.WriteLine($"Discarded {ticker.Ticker} due to lack of financial statements ({tickersProcessed}/{tickers.Count})");
 					continue;
+				}
 				var priceData = DataReader.GetPriceData(ticker);
 				if (priceData == null)
+				{
+					Console.WriteLine($"Discarded {ticker.Ticker} due to lack of price data ({tickersProcessed}/{tickers.Count})");
 					continue;
+				}
 				GenerateDataPoints(financialStatements, priceData, dataPoints);
-				Console.WriteLine($"Generated data points for {ticker.Ticker} ({i}/{tickers.Count})");
-				i++;
+				goodTickers++;
+				Console.WriteLine($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
 			}
 			stopwatch.Stop();
-			Console.WriteLine($"Generated {dataPoints.Count} data points in {stopwatch.Elapsed.TotalSeconds:F1} s, commencing training");
+			Console.WriteLine($"Generated {dataPoints.Count} data points ({(decimal)dataPoints.Count / tickers.Count:F1} per ticker) in {stopwatch.Elapsed.TotalSeconds:F1} s, commencing training");
 			var mlContext = new MLContext();
-			var dataView = mlContext.Data.LoadFromEnumerable(dataPoints);
+			const string FeatureName = "Features";
+			var schema = SchemaDefinition.Create(typeof(DataPoint));
+			int featureCount = dataPoints.First().Features.Length;
+			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
+			var dataView = mlContext.Data.LoadFromEnumerable(dataPoints, schema);
 			var splitData = mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
 			var estimator =
-				mlContext.Transforms.NormalizeMinMax("Features")
+				mlContext.Transforms.NormalizeMinMax(FeatureName)
 				.AppendCacheCheckpoint(mlContext)
 				.Append(mlContext.BinaryClassification.Trainers.SdcaLogisticRegression());
+			// var estimator = mlContext.BinaryClassification.Trainers.SdcaLogisticRegression();
 			stopwatch.Reset();
 			stopwatch.Start();
 			var model = estimator.Fit(splitData.TrainSet);
@@ -55,9 +69,9 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"Processed training set in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			var predictions = model.Transform(splitData.TestSet);
 			var metrics = mlContext.BinaryClassification.Evaluate(predictions);
-			Console.WriteLine($"Accuracy: {metrics.Accuracy:P2}");
-			Console.WriteLine($"AreaUnderRocCurve: {metrics.AreaUnderRocCurve:P2}");
-			Console.WriteLine($"F1Score: {metrics.F1Score:P2}");
+			Console.WriteLine($"Accuracy: {metrics.Accuracy:P1}");
+			Console.WriteLine($"AreaUnderRocCurve: {metrics.AreaUnderRocCurve:P1}");
+			Console.WriteLine($"F1Score: {metrics.F1Score:P1}");
 		}
 
 		private decimal? GetPrice(DateTime date, List<PriceData> priceData)

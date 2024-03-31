@@ -84,7 +84,7 @@ namespace Fundamentalist.Common
 					}
 					features.AddRange(values);
 				};
-				bool hasFeatureAttribute = propertyType.CustomAttributes.Any(a => a.AttributeType == typeof(FeatureAttribute));
+				bool hasFeatureAttribute = property.CustomAttributes.Any(a => a.AttributeType == typeof(FeatureAttribute));
 				if (
 					propertyType.IsGenericType &&
 					propertyType.GetGenericTypeDefinition() == typeof(Nullable<>)

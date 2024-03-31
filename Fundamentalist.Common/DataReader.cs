@@ -2,7 +2,6 @@
 using Fundamentalist.Common.Json.AutoSuggest;
 using Fundamentalist.Common.Json.FinancialStatement;
 using System.Globalization;
-using System.Reflection.Metadata.Ecma335;
 using System.Text.RegularExpressions;
 
 namespace Fundamentalist.Common
@@ -57,8 +56,11 @@ namespace Fundamentalist.Common
 					return false;
 				return pattern.IsMatch(source);
 			};
+			// Filter out PROSPECTUS data, retain regular and 405 filings
 			financialStatements = financialStatements
 				.Where(f =>
+					isValidSource(f.BalanceSheets?.Source) &&
+					isValidSource(f.CashFlow?.Source) &&
 					isValidSource(f.IncomeStatement?.Source) &&
 					f.SourceDate.HasValue
 				)
@@ -106,7 +108,7 @@ namespace Fundamentalist.Common
 				};
 				if (priceDataRow.HasNullValues())
 					break;
-				if (priceDataRow.Date.HasValue && priceDataRow.Open.HasValue)
+				if (priceDataRow.Date.HasValue && priceDataRow.Open.HasValue && priceDataRow.Open.Value > 0)
 					priceData.Add(priceDataRow);
 			}
 			priceData.Sort((x, y) => x.Date.Value.CompareTo(y.Date.Value));
