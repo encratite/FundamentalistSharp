@@ -15,8 +15,19 @@ namespace Fundamentalist.Trainer
 			}
 			string path = Path.Combine(arguments[0], "..");
 			Directory.SetCurrentDirectory(path);
+			RunTests();
+		}
+
+		private static void RunTests()
+		{
 			var trainer = new Trainer();
-			trainer.Run(5, 360, 0.1m);
+			trainer.Run(new TrainerOptions
+			{
+				FinancialStatementCount = 5,
+				LookaheadDays = 180,
+				HistoryDays = 0,
+				MinPerformance = 0.2m
+			});
 		}
 	}
 }

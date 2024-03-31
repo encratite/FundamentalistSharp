@@ -22,6 +22,12 @@
 				Volume == null;
 		}
 
+		public void AddFeatures(List<float> features)
+		{
+			features.Add((float)Open.Value);
+			features.Add((float)Volume.Value);
+		}
+
 		public override string ToString()
 		{
 			return $"{Date.Value.ToShortDateString()} {Open.Value}";
