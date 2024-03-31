@@ -7,7 +7,9 @@
 		public CurrentLiabilities CurrentLiabilities { get; set; }
 		public LongTermLiabilities LongTermLiabilities { get; set; }
 		public Equity Equity { get; set; }
-		public string Currency { get; set; }
+		// public string Currency { get; set; }
+
+		[Feature]
 		public int? FiscalYearEndMonth { get; set; }
 	}
 }

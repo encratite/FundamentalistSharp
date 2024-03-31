@@ -2,6 +2,7 @@
 using Fundamentalist.Common.Json.AutoSuggest;
 using Fundamentalist.Common.Json.FinancialStatement;
 using System.Globalization;
+using System.Reflection.Metadata.Ecma335;
 using System.Text.RegularExpressions;
 
 namespace Fundamentalist.Common
@@ -56,7 +57,13 @@ namespace Fundamentalist.Common
 					return false;
 				return pattern.IsMatch(source);
 			};
-			financialStatements = financialStatements.Where(f => isValidSource(f.IncomeStatement?.Source)).ToList();
+			financialStatements = financialStatements
+				.Where(f =>
+					isValidSource(f.IncomeStatement?.Source) &&
+					f.SourceDate.HasValue
+				)
+				.OrderBy(f => f.SourceDate)
+				.ToList();
 			return financialStatements;
 		}
 
@@ -99,8 +106,10 @@ namespace Fundamentalist.Common
 				};
 				if (priceDataRow.HasNullValues())
 					break;
-				priceData.Add(priceDataRow);
+				if (priceDataRow.Date.HasValue && priceDataRow.Open.HasValue)
+					priceData.Add(priceDataRow);
 			}
+			priceData.Sort((x, y) => x.Date.Value.CompareTo(y.Date.Value));
 			return priceData;
 		}
 
