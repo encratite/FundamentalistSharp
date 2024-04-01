@@ -21,14 +21,12 @@ namespace Fundamentalist.Trainer
 		private static void RunTests()
 		{
 			var trainer = new Trainer();
-			for (int days = 15; days <= 120; days *= 2)
+			for (int days = 5; days <= 100; days *= 2)
 			{
 				trainer.Run(new TrainerOptions
 				{
-					FinancialStatementCount = 4,
-					LookaheadDays = days,
-					HistoryDays = 0,
-					MinPerformance = 0.05m
+					HistoryDays = days,
+					SplitDate = new DateTime(2020, 1, 1)
 				});
 			}
 		}

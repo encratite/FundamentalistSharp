@@ -1,9 +1,8 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json.FinancialStatement;
+using Fundamentalist.Common.Json.KeyRatios;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using Microsoft.ML.Trainers;
-using MsgPack.Serialization;
 using System.Diagnostics;
 
 namespace Fundamentalist.Trainer
@@ -14,16 +13,18 @@ namespace Fundamentalist.Trainer
 		private List<PriceData> _indexPriceData = null;
 		private Dictionary<string, TickerCacheEntry> _tickerCache = new Dictionary<string, TickerCacheEntry>();
 
-		private int _positiveLabels;
-		private int _labelCount;
+		private List<DataPoint> _trainingData;
+		private List<DataPoint> _testData;
 
 		public void Run(TrainerOptions options)
 		{
 			_options = options;
 			LoadIndex();
-			var dataPoints = GetDataPoints();
-			TrainAndEvaluateModel(dataPoints);
+			GetDataPoints();
+			TrainAndEvaluateModel();
 			options.Print();
+			_trainingData = null;
+			_testData = null;
 		}
 
 		private void LoadIndex()
@@ -35,22 +36,13 @@ namespace Fundamentalist.Trainer
 			}
 		}
 
-		private List<DataPoint> GetDataPoints()
+		private void GetDataPoints()
 		{
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			if (_options.DataPointsPath != null)
-			{
-				var deserializedDataPoints = DeserializeDataPoints();
-				if (deserializedDataPoints != null)
-				{
-					stopwatch.Stop();
-					WriteInfo($"Loaded {deserializedDataPoints.Count} data points from \"{_options.DataPointsPath}\" in {stopwatch.Elapsed.TotalSeconds:F1} s");
-					return deserializedDataPoints;
-				}
-			}
 			var tickers = DataReader.GetTickers();
-			var dataPoints = new List<DataPoint>();
+			_trainingData = new List<DataPoint>();
+			_testData = new List<DataPoint>();
 			int tickersProcessed = 0;
 			int goodTickers = 0;
 			Parallel.ForEach(tickers, ticker =>
@@ -59,62 +51,70 @@ namespace Fundamentalist.Trainer
 				var cacheEntry = GetCacheEntry(ticker, tickers, tickersProcessed);
 				if (cacheEntry == null)
 					return;
-				GenerateDataPoints(cacheEntry, dataPoints);
+				GenerateDataPoints(cacheEntry, null, _options.SplitDate, _trainingData);
+				GenerateDataPoints(cacheEntry, _options.SplitDate, null, _testData);
 				goodTickers++;
 				WriteInfo($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
 			});
 			stopwatch.Stop();
-			WriteInfo($"Generated {dataPoints.Count} data points ({(decimal)dataPoints.Count / tickers.Count:F1} per ticker) in {stopwatch.Elapsed.TotalSeconds:F1} s");
-			if (_options.DataPointsPath != null)
-			{
-				stopwatch.Restart();
-				SerializeDataPoints(dataPoints);
-				WriteInfo($"Serialized data points in {stopwatch.Elapsed.TotalSeconds:F1} s");
-				stopwatch.Stop();
-			}
-			return dataPoints;
+			WriteInfo($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
 		private TickerCacheEntry GetCacheEntry(CompanyTicker ticker, List<CompanyTicker> tickers, int tickersProcessed)
 		{
+			const bool EnableFinancialStatements = false;
+			const bool EnableKeyRatios = false;
+			const bool EnablePriceData = true;
+
 			TickerCacheEntry cacheEntry = null;
 			string key = ticker.Ticker;
 			bool hasEntry;
 			lock (_tickerCache)
 				hasEntry = _tickerCache.TryGetValue(key, out cacheEntry);
-			if (!hasEntry)
+			if (hasEntry)
+				return cacheEntry;
+			var error = (string reason) =>
 			{
-				var error = (string reason) =>
-				{
-					WriteInfo($"Discarded {ticker.Ticker} due to lack of {reason} ({tickersProcessed}/{tickers.Count})");
-					SetCacheEntry(key, null);
-				};
-				var financialStatements = DataReader.GetFinancialStatements(ticker);
+				WriteInfo($"Discarded {ticker.Ticker} due to lack of {reason} ({tickersProcessed}/{tickers.Count})");
+				SetCacheEntry(key, null);
+			};
+			List<FinancialStatement> financialStatements = null;
+			if (EnableFinancialStatements)
+			{
+				financialStatements = DataReader.GetFinancialStatements(ticker);
 				if (financialStatements == null)
 				{
 					error("financial statements");
-					return cacheEntry;
+					return null;
 				}
-				var keyRatios = DataReader.GetKeyRatios(ticker);
+			}
+			KeyRatios keyRatios = null;
+			if (EnableKeyRatios)
+			{
+				keyRatios = DataReader.GetKeyRatios(ticker);
 				if (keyRatios == null)
 				{
 					error("key ratios");
-					return cacheEntry;
+					return null;
 				}
-				var priceData = DataReader.GetPriceData(ticker);
+			}
+			List<PriceData> priceData = null;
+			if (EnablePriceData)
+			{
+				priceData = DataReader.GetPriceData(ticker);
 				if (priceData == null)
 				{
 					error("price data");
-					return cacheEntry;
+					return null;
 				}
-				cacheEntry = new TickerCacheEntry
-				{
-					FinancialStatements = financialStatements,
-					KeyRatios = keyRatios,
-					PriceData = priceData
-				};
-				SetCacheEntry(key, cacheEntry);
 			}
+			cacheEntry = new TickerCacheEntry
+			{
+				FinancialStatements = financialStatements,
+				KeyRatios = keyRatios,
+				PriceData = priceData
+			};
+			SetCacheEntry(key, cacheEntry);
 			return cacheEntry;
 		}
 
@@ -124,65 +124,30 @@ namespace Fundamentalist.Trainer
 				_tickerCache[key] = value;
 		}
 
-		private void SerializeDataPoints(List<DataPoint> dataPoints)
+		private void TrainAndEvaluateModel()
 		{
-			using (var fileStream = new FileStream(_options.DataPointsPath, FileMode.Create))
-			{
-				var serializer = MessagePackSerializer.Get<List<DataPoint>>();
-				serializer.Pack(fileStream, dataPoints);
-			}
-		}
-
-		private List<DataPoint> DeserializeDataPoints()
-		{
-			if (File.Exists(_options.DataPointsPath))
-			{
-				using (var fileStream = new FileStream(_options.DataPointsPath, FileMode.Open))
-				{
-					var serializer = MessagePackSerializer.Get<List<DataPoint>>();
-					var dataPoints = serializer.Unpack(fileStream);
-					return dataPoints;
-				}
-			}
-			else
-				return null;
-		}
-
-		private void TrainAndEvaluateModel(List<DataPoint> dataPoints)
-		{
-			int iterations = 50;
+			int iterations = 100;
 			var mlContext = new MLContext();
 			const string FeatureName = "Features";
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
-			int featureCount = dataPoints.First().Features.Length;
+			int featureCount = _trainingData.First().Features.Length;
 			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
-			var dataView = mlContext.Data.LoadFromEnumerable(dataPoints, schema);
-			var splitData = mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
-			var options = new LbfgsLogisticRegressionBinaryTrainer.Options
-			{
-				MaximumNumberOfIterations = iterations
-			};
-			var estimator =
-				mlContext.Transforms.NormalizeMinMax(FeatureName)
-				.AppendCacheCheckpoint(mlContext)
-				// .Append(mlContext.BinaryClassification.Trainers.SgdCalibrated(options));
-				// .Append(mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(maximumNumberOfIterations: iterations));
-				.Append(mlContext.BinaryClassification.Trainers.LbfgsLogisticRegression(options));
-				// .Append(mlContext.BinaryClassification.Trainers.LinearSvm(numberOfIterations: iterations));
-				// .Append(mlContext.BinaryClassification.Trainers.LdSvm(numberOfIterations: iterations));
-			Console.WriteLine($"Training model with {dataPoints.Count} data points with {featureCount} features each, using {iterations} iterations");
+			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
+			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
+			var estimator = mlContext.Regression.Trainers.Sdca(maximumNumberOfIterations: iterations);
+			Console.WriteLine($"Training model with {_trainingData.Count} data points with {featureCount} features each, using {iterations} iterations");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			var model = estimator.Fit(splitData.TrainSet);
+			var model = estimator.Fit(trainingData);
 			stopwatch.Stop();
-			Console.WriteLine($"  Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s");
-			var predictions = model.Transform(splitData.TestSet);
-			var metrics = mlContext.BinaryClassification.Evaluate(predictions);
-			// var metrics = mlContext.BinaryClassification.EvaluateNonCalibrated(predictions);
-			Console.WriteLine($"  Accuracy: {metrics.Accuracy:P1}");
-			// Console.WriteLine($"  AreaUnderRocCurve: {metrics.AreaUnderRocCurve:P1}");
-			Console.WriteLine($"  F1Score: {metrics.F1Score:P1}");
-			Console.WriteLine($"  Positive labels: {(decimal)_positiveLabels / _labelCount:P1}");
+			Console.WriteLine($"  Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
+			var predictions = model.Transform(testData);
+			var metrics = mlContext.Regression.Evaluate(predictions);
+			Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
+			Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
+			Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
+			Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
+			// Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
 		}
 
 		private decimal? GetPrice(DateTime date, List<PriceData> priceData)
@@ -199,72 +164,39 @@ namespace Fundamentalist.Trainer
 			return null;
 		}
 
-		private void GenerateDataPoints(TickerCacheEntry tickerCacheEntry, List<DataPoint> dataPoints)
+		private void GenerateDataPoints(TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
 		{
-			var financialStatements = tickerCacheEntry.FinancialStatements;
-			var priceData = tickerCacheEntry.PriceData;
-			for (int i = 0; i < financialStatements.Count - _options.FinancialStatementCount; i++)
+			var priceData = tickerCacheEntry.PriceData.Where(p =>
+				(!from.HasValue || p.Date.Value >= from.Value) &&
+				(!to.HasValue || p.Date.Value < to.Value)
+			).ToList();
+			for (int i = 0; i < priceData.Count - _options.HistoryDays - 1; i++)
 			{
-				var currentFinancialStatements = financialStatements.Skip(i).Take(_options.FinancialStatementCount).ToList();
-				DateTime date1 = currentFinancialStatements.Last().SourceDate.Value;
-				DateTime date2 = date1.AddDays(_options.LookaheadDays);
-				decimal? indexPrice1 = GetPrice(date1, _indexPriceData);
-				decimal? indexPrice2 = GetPrice(date2, _indexPriceData);
-				decimal? stockPrice1 = GetPrice(date1, priceData);
-				decimal? stockPrice2 = GetPrice(date2, priceData);
-				if (
-					!indexPrice1.HasValue ||
-					!indexPrice2.HasValue ||
-					!stockPrice1.HasValue ||
-					!stockPrice2.HasValue
-				)
-					continue;
-				var keyRatios = tickerCacheEntry.KeyRatios.CompanyMetrics.Where(m => m.EndDate.Value <= date1).Reverse().ToList();
-				if (keyRatios.Count < _options.FinancialStatementCount)
-					continue;
-				keyRatios.RemoveRange(_options.FinancialStatementCount, keyRatios.Count - _options.FinancialStatementCount);
-				bool enableHistory = _options.HistoryDays > 0;
-				List<PriceData> history = null;
-				if (enableHistory)
+				var series = priceData.Skip(i).Take(_options.HistoryDays);
+				var future = priceData[i + _options.HistoryDays + 1];
+				var features = new List<float>();
+				var getRatio = (decimal? x, decimal? y) => (float)(x.Value / y.Value - 1.0m);
+				foreach (var sample in series)
 				{
-					history = priceData.Where(p => p.Date <= date1).Reverse().ToList();
-					if (history.Count < _options.HistoryDays)
-						continue;
-					history.RemoveRange(_options.HistoryDays, history.Count - _options.HistoryDays);
+					float performance = getRatio(sample.Close, sample.Open);
+					features.Add(performance);
 				}
-				decimal indexPerformance = indexPrice2.Value / indexPrice1.Value;
-				decimal stockPerformance = stockPrice2.Value / stockPrice1.Value;
-				decimal performance = stockPerformance - indexPerformance;
-				var financialStatementFeatures = Features.GetFeatures(currentFinancialStatements).AsEnumerable();
-				var keyRatioFeatures = Features.GetFeatures(tickerCacheEntry.KeyRatios);
-				// var features = financialStatementFeatures.Concat(keyRatioFeatures);
-				var features = keyRatioFeatures.AsEnumerable();
-				if (enableHistory)
-				{
-					var historyFeatures = new List<float>();
-					foreach (var p in history)
-						p.AddFeatures(historyFeatures);
-					features = features.Concat(historyFeatures);
-				}
-				bool label = performance >= _options.MinPerformance;
+				float label = getRatio(future.Close, series.Last().Close);
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
 					Label = label
 				};
 				lock (dataPoints)
-				{
 					dataPoints.Add(dataPoint);
-					if (label)
-						_positiveLabels++;
-					_labelCount++;
-				}
 			}
 		}
 
 		private void WriteInfo(string message)
 		{
-			// Console.WriteLine(message);
+			const bool EnableVerboseOutput = false;
+			if (EnableVerboseOutput)
+				Console.WriteLine(message);
 		}
 	}
 }
