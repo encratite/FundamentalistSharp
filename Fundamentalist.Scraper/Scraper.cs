@@ -17,6 +17,7 @@ namespace Fundamentalist.Scraper
 				if (secId != null)
 				{
 					DownloadFinancialStatements(secId, ticker);
+					DownloadKeyRatios(secId, ticker);
 					DownloadPriceData(ticker);
 				}
 				else
@@ -94,6 +95,14 @@ namespace Fundamentalist.Scraper
 			string encodedSecId = HttpUtility.UrlEncode(secId);
 			string uri = $"https://assets.msn.com/service/Finance/Equities/financialstatements?apikey=0QfOX3Vn51YCzitbLaRkTTBadtWpgTN8NZLW0C1SEM&ocid=finance-utils-peregrine&cm=en-us&it=web&scn=ANON&$filter=_p%20eq%20%27{encodedSecId}%27&$top=200&wrapodata=false";
 			string path = ticker.GetJsonPath(Configuration.FinancialStatementsDirectory);
+			DownloadOnly(uri, path);
+		}
+
+		private void DownloadKeyRatios(string secId, CompanyTicker ticker)
+		{
+			string encodedSecId = HttpUtility.UrlEncode(secId);
+			string uri = $"https://services.bingapis.com/contentservices-finance.financedataservice/api/v1/KeyRatios?stockId={encodedSecId}";
+			string path = ticker.GetJsonPath(Configuration.KeyRatiosDirectory);
 			DownloadOnly(uri, path);
 		}
 

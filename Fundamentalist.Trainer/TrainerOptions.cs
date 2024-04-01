@@ -10,7 +10,7 @@
 
 		public void Print()
 		{
-			Console.WriteLine("Options used:");
+			// Console.WriteLine("Options used:");
 			Console.WriteLine($"  FinancialStatementCount: {FinancialStatementCount}");
 			Console.WriteLine($"  LookaheadDays: {LookaheadDays}");
 			Console.WriteLine($"  HistoryDays: {HistoryDays}");

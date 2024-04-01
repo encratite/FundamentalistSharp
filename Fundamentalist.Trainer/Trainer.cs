@@ -14,13 +14,16 @@ namespace Fundamentalist.Trainer
 		private List<PriceData> _indexPriceData = null;
 		private Dictionary<string, TickerCacheEntry> _tickerCache = new Dictionary<string, TickerCacheEntry>();
 
+		private int _positiveLabels;
+		private int _labelCount;
+
 		public void Run(TrainerOptions options)
 		{
 			_options = options;
-			options.Print();
 			LoadIndex();
 			var dataPoints = GetDataPoints();
 			TrainAndEvaluateModel(dataPoints);
+			options.Print();
 		}
 
 		private void LoadIndex()
@@ -56,7 +59,7 @@ namespace Fundamentalist.Trainer
 				var cacheEntry = GetCacheEntry(ticker, tickers, tickersProcessed);
 				if (cacheEntry == null)
 					return;
-				GenerateDataPoints(cacheEntry.FinancialStatements, cacheEntry.PriceData, dataPoints);
+				GenerateDataPoints(cacheEntry, dataPoints);
 				goodTickers++;
 				WriteInfo($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
 			});
@@ -81,23 +84,33 @@ namespace Fundamentalist.Trainer
 				hasEntry = _tickerCache.TryGetValue(key, out cacheEntry);
 			if (!hasEntry)
 			{
+				var error = (string reason) =>
+				{
+					WriteInfo($"Discarded {ticker.Ticker} due to lack of {reason} ({tickersProcessed}/{tickers.Count})");
+					SetCacheEntry(key, null);
+				};
 				var financialStatements = DataReader.GetFinancialStatements(ticker);
 				if (financialStatements == null)
 				{
-					WriteInfo($"Discarded {ticker.Ticker} due to lack of financial statements ({tickersProcessed}/{tickers.Count})");
-					SetCacheEntry(key, null);
+					error("financial statements");
+					return cacheEntry;
+				}
+				var keyRatios = DataReader.GetKeyRatios(ticker);
+				if (keyRatios == null)
+				{
+					error("key ratios");
 					return cacheEntry;
 				}
 				var priceData = DataReader.GetPriceData(ticker);
 				if (priceData == null)
 				{
-					WriteInfo($"Discarded {ticker.Ticker} due to lack of price data ({tickersProcessed}/{tickers.Count})");
-					SetCacheEntry(key, null);
+					error("price data");
 					return cacheEntry;
 				}
 				cacheEntry = new TickerCacheEntry
 				{
 					FinancialStatements = financialStatements,
+					KeyRatios = keyRatios,
 					PriceData = priceData
 				};
 				SetCacheEntry(key, cacheEntry);
@@ -145,25 +158,31 @@ namespace Fundamentalist.Trainer
 			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var dataView = mlContext.Data.LoadFromEnumerable(dataPoints, schema);
 			var splitData = mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
-			var options = new SgdCalibratedTrainer.Options
+			var options = new LbfgsLogisticRegressionBinaryTrainer.Options
 			{
-				NumberOfIterations = iterations
+				MaximumNumberOfIterations = iterations
 			};
 			var estimator =
 				mlContext.Transforms.NormalizeMinMax(FeatureName)
 				.AppendCacheCheckpoint(mlContext)
-				.Append(mlContext.BinaryClassification.Trainers.SgdCalibrated(options));
+				// .Append(mlContext.BinaryClassification.Trainers.SgdCalibrated(options));
+				// .Append(mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(maximumNumberOfIterations: iterations));
+				.Append(mlContext.BinaryClassification.Trainers.LbfgsLogisticRegression(options));
+				// .Append(mlContext.BinaryClassification.Trainers.LinearSvm(numberOfIterations: iterations));
+				// .Append(mlContext.BinaryClassification.Trainers.LdSvm(numberOfIterations: iterations));
 			Console.WriteLine($"Training model with {dataPoints.Count} data points with {featureCount} features each, using {iterations} iterations");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			var model = estimator.Fit(splitData.TrainSet);
 			stopwatch.Stop();
-			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			Console.WriteLine($"  Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			var predictions = model.Transform(splitData.TestSet);
 			var metrics = mlContext.BinaryClassification.Evaluate(predictions);
+			// var metrics = mlContext.BinaryClassification.EvaluateNonCalibrated(predictions);
 			Console.WriteLine($"  Accuracy: {metrics.Accuracy:P1}");
 			// Console.WriteLine($"  AreaUnderRocCurve: {metrics.AreaUnderRocCurve:P1}");
 			Console.WriteLine($"  F1Score: {metrics.F1Score:P1}");
+			Console.WriteLine($"  Positive labels: {(decimal)_positiveLabels / _labelCount:P1}");
 		}
 
 		private decimal? GetPrice(DateTime date, List<PriceData> priceData)
@@ -180,8 +199,10 @@ namespace Fundamentalist.Trainer
 			return null;
 		}
 
-		private void GenerateDataPoints(List<FinancialStatement> financialStatements, List<PriceData> priceData, List<DataPoint> dataPoints)
+		private void GenerateDataPoints(TickerCacheEntry tickerCacheEntry, List<DataPoint> dataPoints)
 		{
+			var financialStatements = tickerCacheEntry.FinancialStatements;
+			var priceData = tickerCacheEntry.PriceData;
 			for (int i = 0; i < financialStatements.Count - _options.FinancialStatementCount; i++)
 			{
 				var currentFinancialStatements = financialStatements.Skip(i).Take(_options.FinancialStatementCount).ToList();
@@ -198,6 +219,10 @@ namespace Fundamentalist.Trainer
 					!stockPrice2.HasValue
 				)
 					continue;
+				var keyRatios = tickerCacheEntry.KeyRatios.CompanyMetrics.Where(m => m.EndDate.Value <= date1).Reverse().ToList();
+				if (keyRatios.Count < _options.FinancialStatementCount)
+					continue;
+				keyRatios.RemoveRange(_options.FinancialStatementCount, keyRatios.Count - _options.FinancialStatementCount);
 				bool enableHistory = _options.HistoryDays > 0;
 				List<PriceData> history = null;
 				if (enableHistory)
@@ -210,7 +235,10 @@ namespace Fundamentalist.Trainer
 				decimal indexPerformance = indexPrice2.Value / indexPrice1.Value;
 				decimal stockPerformance = stockPrice2.Value / stockPrice1.Value;
 				decimal performance = stockPerformance - indexPerformance;
-				var features = Features.GetFeatures(currentFinancialStatements).AsEnumerable();
+				var financialStatementFeatures = Features.GetFeatures(currentFinancialStatements).AsEnumerable();
+				var keyRatioFeatures = Features.GetFeatures(tickerCacheEntry.KeyRatios);
+				// var features = financialStatementFeatures.Concat(keyRatioFeatures);
+				var features = keyRatioFeatures.AsEnumerable();
 				if (enableHistory)
 				{
 					var historyFeatures = new List<float>();
@@ -225,7 +253,12 @@ namespace Fundamentalist.Trainer
 					Label = label
 				};
 				lock (dataPoints)
+				{
 					dataPoints.Add(dataPoint);
+					if (label)
+						_positiveLabels++;
+					_labelCount++;
+				}
 			}
 		}
 

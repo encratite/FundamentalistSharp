@@ -21,13 +21,16 @@ namespace Fundamentalist.Trainer
 		private static void RunTests()
 		{
 			var trainer = new Trainer();
-			trainer.Run(new TrainerOptions
+			for (int days = 15; days <= 120; days *= 2)
 			{
-				FinancialStatementCount = 5,
-				LookaheadDays = 180,
-				HistoryDays = 0,
-				MinPerformance = 0.2m
-			});
+				trainer.Run(new TrainerOptions
+				{
+					FinancialStatementCount = 4,
+					LookaheadDays = days,
+					HistoryDays = 0,
+					MinPerformance = 0.05m
+				});
+			}
 		}
 	}
 }

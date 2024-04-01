@@ -1,6 +1,7 @@
 ﻿using CsvHelper;
 using Fundamentalist.Common.Json.AutoSuggest;
 using Fundamentalist.Common.Json.FinancialStatement;
+using Fundamentalist.Common.Json.KeyRatios;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -49,14 +50,14 @@ namespace Fundamentalist.Common
 			if (json == null)
 				return null;
 			var financialStatements = Utility.Deserialize<List<FinancialStatement>>(json);
-			var pattern = new Regex("^10-(Q|K)");
+			// 10-Q filings only, no 10-K or 10-K405 ones
 			var isValidSource = (string source) =>
 			{
 				if (source == null)
 					return false;
-				return pattern.IsMatch(source);
+				return source.StartsWith("10-Q");
 			};
-			// Filter out PROSPECTUS data, retain regular and 405 filings
+			// Filter out PROSPECTUS data
 			financialStatements = financialStatements
 				.Where(f =>
 					isValidSource(f.BalanceSheets?.Source) &&
@@ -67,6 +68,17 @@ namespace Fundamentalist.Common
 				.OrderBy(f => f.SourceDate)
 				.ToList();
 			return financialStatements;
+		}
+
+		public static KeyRatios GetKeyRatios(CompanyTicker ticker)
+		{
+			string path = ticker.GetJsonPath(Configuration.KeyRatiosDirectory);
+			string json = ReadFile(path);
+			if (json == null)
+				return null;
+			var keyRatios = Utility.Deserialize<KeyRatios>(json);
+			keyRatios.CompanyMetrics = keyRatios.CompanyMetrics.Where(m => m.FiscalPeriodType.StartsWith("Q") && m.EndDate.HasValue).OrderBy(m => m.EndDate).ToList();
+			return keyRatios;
 		}
 
 		public static List<PriceData> GetPriceData(CompanyTicker ticker)
