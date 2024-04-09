@@ -28,7 +28,7 @@ namespace Fundamentalist.Trainer
 			decimal minimumInvestment = 10000.0m,
 			decimal fee = 10.0m,
 			int portfolioStocks = 5,
-			int rebalanceDays = 30,
+			int rebalanceDays = 15,
 			int historyDays = 15
 		)
 		{

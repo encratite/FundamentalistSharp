@@ -57,11 +57,8 @@ namespace Fundamentalist.Trainer
 				else
 				{
 					TrainAndEvaluateModel(algorithm, true);
-					for (int portfolioStocks = 3; portfolioStocks <= 6; portfolioStocks++)
-					{
-						var backtest = new Backtest(_testData, portfolioStocks: portfolioStocks);
-						backtest.Run();
-					}
+					var backtest = new Backtest(_testData);
+					backtest.Run();
 				}
 			}
 			_trainingData = null;
@@ -122,7 +119,7 @@ namespace Fundamentalist.Trainer
 		private TickerCacheEntry GetCacheEntry(CompanyTicker ticker, List<CompanyTicker> tickers, int tickersProcessed)
 		{
 			const bool EnableFinancialStatements = true;
-			const bool EnableKeyRatios = true;
+			const bool EnableKeyRatios = false;
 			const bool EnablePriceData = true;
 
 			TickerCacheEntry cacheEntry = null;
@@ -230,7 +227,7 @@ namespace Fundamentalist.Trainer
 		{
 			var financialStatements = tickerCacheEntry.FinancialStatements.Where(x => InRange(x.SourceDate, from, to)).ToList();
 			var priceData = tickerCacheEntry.PriceData;
-			var reverseMetrics = tickerCacheEntry.KeyRatios.CompanyMetrics.AsEnumerable().Reverse();
+			// var reverseMetrics = tickerCacheEntry.KeyRatios.CompanyMetrics.AsEnumerable().Reverse();
 
 			for (int i = 0; i < financialStatements.Count - 1; i++)
 			{
@@ -242,12 +239,14 @@ namespace Fundamentalist.Trainer
 				DateTime pastDate = currentDate - TimeSpan.FromDays(_options.HistoryDays);
 				DateTime futureDate = currentDate + TimeSpan.FromDays(_options.ForecastDays);
 
+				/*
 				var keyRatios = reverseMetrics.FirstOrDefault(x => x.EndDate.Value <= currentDate);
 				if (keyRatios == null)
 				{
 					Interlocked.Increment(ref _keyRatioErrors);
 					continue;
 				}
+				*/
 
 				decimal? currentPrice = GetPrice(currentDate, priceData);
 				decimal? pastPrice = GetPrice(pastDate, priceData);
@@ -263,11 +262,12 @@ namespace Fundamentalist.Trainer
 				}
 
 				var financialFeatures = GetFinancialFeatures(previousStatement, currentStatement);
-				var keyRatioFeatures = Features.GetFeatures(keyRatios);
+				// var keyRatioFeatures = Features.GetFeatures(keyRatios);
 				float pastPerformance = GetRelativeChange(pastPrice, currentPrice);
 				float futurePerformance = GetRelativeChange(currentPrice, futurePrice);
 				var performanceFeatures = new float[] { pastPerformance };
-				var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
+				// var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
+				var features = financialFeatures.Concat(performanceFeatures);
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
