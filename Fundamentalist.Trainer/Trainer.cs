@@ -4,6 +4,7 @@ using Fundamentalist.Common.Json.KeyRatios;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Fundamentalist.Trainer
 {
@@ -45,7 +46,7 @@ namespace Fundamentalist.Trainer
 		{
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			var tickers = DataReader.GetTickers();
+			var tickers = DataReader.GetTickers().Take(100).ToList();
 			_trainingData = new List<DataPoint>();
 			_testData = new List<DataPoint>();
 			int tickersProcessed = 0;
@@ -57,11 +58,12 @@ namespace Fundamentalist.Trainer
 				var cacheEntry = GetCacheEntry(ticker, tickers, tickersProcessed);
 				if (cacheEntry == null)
 					return;
-				GenerateDataPoints(cacheEntry, null, _options.SplitDate, _trainingData);
-				GenerateDataPoints(cacheEntry, _options.SplitDate, null, _testData);
+				GenerateDataPoints(ticker.Ticker, cacheEntry, null, _options.SplitDate, _trainingData);
+				GenerateDataPoints(ticker.Ticker, cacheEntry, _options.SplitDate, null, _testData);
 				goodTickers++;
 				// Console.WriteLine($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
 			});
+			_testData.Sort((x, y) => x.Date.CompareTo(y.Date));
 			stopwatch.Stop();
 			decimal percentage = 1.0m - (decimal)goodTickers / tickersProcessed;
 			Console.WriteLine($"Discarded {percentage:P1} of tickers due to missing data, also encountered {_keyRatioErrors} key ratio errors and {_priceErrors} price errors");
@@ -158,6 +160,99 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
 			Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
 			// Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
+			// var predictionEngine = mlContext.Model.CreatePredictionEngine<DataPoint, Prediction>(model, testData.Schema);
+			Backtest();
+		}
+
+		private void Backtest()
+		{
+			const decimal InitialMoney = 100000.0m;
+			const decimal MinimumInvestment = 10000.0m;
+			const decimal Fee = 10.0m;
+			const int PortfolioStocks = 5;
+			const int RebalanceDays = 30;
+			const int HistoryDays = 30;
+
+			decimal money = InitialMoney;
+			var portfolio = new List<Stock>();
+
+			Console.WriteLine("Performing backtest");
+
+			DateTime now = _testData.First().Date;
+
+			var log = (string message) => Console.WriteLine($"[{now.ToShortDateString()}] {message}");
+
+			var sellStocks = () =>
+			{
+				foreach (var stock in portfolio)
+				{
+					var priceData = stock.Data.PriceData;
+					decimal? currentPrice = GetPrice(now, priceData);
+					if (currentPrice == null)
+						currentPrice = priceData.Last().Mean;
+					decimal ratio = currentPrice.Value / stock.BuyPrice;
+					decimal change = ratio - 1.0m;
+					decimal sellPrice = ratio * stock.InitialInvestment;
+					decimal gain = change * stock.InitialInvestment;
+					money += sellPrice - Fee;
+					if (ratio > 1.0m)
+						log($"Gained {gain:C0} ({change:+#.00%;-#.00%;+0.00%}) from selling {stock.Data.Ticker}");
+					else
+						log($"Lost {Math.Abs(gain):C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker}");
+				}
+				portfolio.Clear();
+			};
+
+			DateTime finalDate = _testData.Last().Date + TimeSpan.FromDays(_options.ForecastDays);
+			for (; now < finalDate;  now += TimeSpan.FromDays(RebalanceDays))
+			{
+				// Sell all previously owned stocks
+				sellStocks();
+
+				if (money < MinimumInvestment)
+				{
+					log("Ran out of money");
+					break;
+				}
+
+				log($"Rebalancing portfolio with {money:C0} in the bank");
+
+				var available =
+					_testData.Where(x => x.Date >= now - TimeSpan.FromDays(HistoryDays) && x.Date <= now)
+					.OrderByDescending(x => x.Label)
+					.ToList();
+				if (!available.Any())
+				{
+					log("No recent financial statements available");
+					continue;
+				}
+
+				// Rebalance portfolio by buying new stocks
+				decimal investment = money / Math.Min(PortfolioStocks, available.Count);
+				foreach (var data in available)
+				{
+					if (portfolio.Any(x => x.Data.Ticker == data.Ticker))
+					{
+						// Make sure we don't accidentally buy the same stock twice
+						continue;
+					}
+					decimal currentPrice = GetPrice(now, data.PriceData).Value;
+					var stock = new Stock
+					{
+						InitialInvestment = investment,
+						BuyPrice = currentPrice,
+						Data = data
+					};
+					money -= investment + Fee;
+					portfolio.Add(stock);
+					if (portfolio.Count >= PortfolioStocks)
+						break;
+				}
+			}
+			// Cash out
+			sellStocks();
+
+			Console.WriteLine($"Finished backtest with {money:C0} in the bank ({money / InitialMoney - 1.0m:+#.00%;-#.00%;+0.00%})");
 		}
 
 		private decimal? GetPrice(DateTime date, List<PriceData> priceData)
@@ -203,25 +298,6 @@ namespace Fundamentalist.Trainer
 			return GetRelativeChange((float)previous.Value, (float)current.Value);
 		}
 
-		private List<float> GetFinancialStatementFeatures(int index, List<FinancialStatement> financialStatements, out DateTime date)
-		{
-			var successiveStatements = financialStatements.Skip(index).Take(2).ToList();
-			var previousStatement = successiveStatements[0];
-			var currentStatement = successiveStatements[1];
-			var previousFeatures = Features.GetFeatures(previousStatement);
-			var currentFeatures = Features.GetFeatures(currentStatement);
-			var features = new List<float>();
-			for (int i = 0; i < previousFeatures.Count; i++)
-			{
-				float previous = previousFeatures[i];
-				float current = currentFeatures[i];
-				float relativeChange = GetRelativeChange(previous, current);
-				features.Add(relativeChange);
-			}
-			date = currentStatement.SourceDate.Value;
-			return features;
-		}
-
 		private List<float> GetFinancialFeatures(FinancialStatement previousStatement, FinancialStatement currentStatement)
 		{
 			var previousFeatures = Features.GetFeatures(previousStatement);
@@ -237,7 +313,7 @@ namespace Fundamentalist.Trainer
 			return features;
 		}
 
-		private void GenerateDataPoints(TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
+		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
 		{
 			var financialStatements = tickerCacheEntry.FinancialStatements.Where(x => InRange(x.SourceDate, from, to)).ToList();
 			var priceData = tickerCacheEntry.PriceData;
@@ -281,8 +357,11 @@ namespace Fundamentalist.Trainer
 				var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
 				var dataPoint = new DataPoint
 				{
+					Ticker = ticker,
 					Features = features.ToArray(),
-					Label = futurePerformance
+					Label = futurePerformance,
+					Date = currentDate,
+					PriceData = priceData
 				};
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
