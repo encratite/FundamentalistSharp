@@ -13,16 +13,9 @@
 		// public string Id { get; set; }
 		// public string _T { get; set; }
 
-		[Feature]
 		public DateTime? SourceDate
 		{
 			get => BalanceSheets?.SourceDate;
-		}
-
-		[Feature]
-		public bool IsAnnual
-		{
-			get => Type == "annual";
 		}
 
 		public override string ToString()

@@ -8,8 +8,6 @@
 		public LongTermLiabilities LongTermLiabilities { get; set; }
 		public Equity Equity { get; set; }
 		// public string Currency { get; set; }
-
-		[Feature]
-		public int? FiscalYearEndMonth { get; set; }
+		// public int? FiscalYearEndMonth { get; set; }
 	}
 }

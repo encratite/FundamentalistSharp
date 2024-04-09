@@ -10,7 +10,12 @@
 		public decimal? AdjustedClose { get; set; }
 		public long? Volume { get; set; }
 
-		public bool HasNullValues()
+		public decimal? Mean
+		{
+			get => (Open + Close) / 2.0m;
+		}
+
+		public bool HasInvalidValues()
 		{
 			return
 				Date == null ||
@@ -19,7 +24,8 @@
 				Low == null ||
 				Close == null ||
 				AdjustedClose == null ||
-				Volume == null;
+				Volume == null ||
+				Volume.Value == 0;
 		}
 
 		public override string ToString()

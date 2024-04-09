@@ -3,7 +3,9 @@ using Fundamentalist.Common.Json.FinancialStatement;
 using Fundamentalist.Common.Json.KeyRatios;
 using Microsoft.ML;
 using Microsoft.ML.Data;
+using System;
 using System.Diagnostics;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Fundamentalist.Trainer
 {
@@ -16,9 +18,14 @@ namespace Fundamentalist.Trainer
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
 
+		private int _priceErrors = 0;
+		private int _keyRatioErrors = 0;
+
 		public void Run(TrainerOptions options)
 		{
 			_options = options;
+			_priceErrors = 0;
+			_keyRatioErrors = 0;
 			LoadIndex();
 			GetDataPoints();
 			TrainAndEvaluateModel();
@@ -45,7 +52,12 @@ namespace Fundamentalist.Trainer
 			_testData = new List<DataPoint>();
 			int tickersProcessed = 0;
 			int goodTickers = 0;
-			Parallel.ForEach(tickers, ticker =>
+			Console.WriteLine("Generating data points");
+			var options = new ParallelOptions
+			{
+				MaxDegreeOfParallelism = Environment.ProcessorCount
+			};
+			Parallel.ForEach(tickers, options, ticker =>
 			{
 				tickersProcessed++;
 				var cacheEntry = GetCacheEntry(ticker, tickers, tickersProcessed);
@@ -54,16 +66,16 @@ namespace Fundamentalist.Trainer
 				GenerateDataPoints(cacheEntry, null, _options.SplitDate, _trainingData);
 				GenerateDataPoints(cacheEntry, _options.SplitDate, null, _testData);
 				goodTickers++;
-				WriteInfo($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
+				// Console.WriteLine($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
 			});
 			stopwatch.Stop();
-			WriteInfo($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
 		private TickerCacheEntry GetCacheEntry(CompanyTicker ticker, List<CompanyTicker> tickers, int tickersProcessed)
 		{
-			const bool EnableFinancialStatements = false;
-			const bool EnableKeyRatios = false;
+			const bool EnableFinancialStatements = true;
+			const bool EnableKeyRatios = true;
 			const bool EnablePriceData = true;
 
 			TickerCacheEntry cacheEntry = null;
@@ -75,7 +87,7 @@ namespace Fundamentalist.Trainer
 				return cacheEntry;
 			var error = (string reason) =>
 			{
-				WriteInfo($"Discarded {ticker.Ticker} due to lack of {reason} ({tickersProcessed}/{tickers.Count})");
+				// Console.WriteLine($"Discarded {ticker.Ticker} due to lack of {reason} ({tickersProcessed}/{tickers.Count})");
 				SetCacheEntry(key, null);
 			};
 			List<FinancialStatement> financialStatements = null;
@@ -134,7 +146,9 @@ namespace Fundamentalist.Trainer
 			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
 			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
-			var estimator = mlContext.Regression.Trainers.Sdca(maximumNumberOfIterations: iterations);
+			var estimator =
+				mlContext.Transforms.NormalizeMinMax("Features")
+				.Append(mlContext.Regression.Trainers.Sdca(maximumNumberOfIterations: iterations));
 			Console.WriteLine($"Training model with {_trainingData.Count} data points with {featureCount} features each, using {iterations} iterations");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
@@ -156,47 +170,127 @@ namespace Fundamentalist.Trainer
 			foreach (var price in priceData)
 			{
 				if (price.Date == date)
-					return price.Open;
+					return price.Mean;
 				else if (previousPrice != null && previousPrice.Date >= date && price.Date > date)
-					return previousPrice.Open;
+					return previousPrice.Mean;
 				previousPrice = price;
 			}
 			return null;
 		}
 
+		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
+		{
+			return
+				(!from.HasValue || date.Value >= from.Value) &&
+				(!to.HasValue || date.Value < to.Value);
+		}
+
+		private float GetRelativeChange(float previous, float current)
+		{
+			const float Maximum = 100.0f;
+			const float Minimum = -Maximum;
+			const float Epsilon = 1e-3f;
+			if (previous == 0.0f)
+				previous = Epsilon;
+			float relativeChange = current / previous - 1.0f;
+			if (relativeChange < Minimum)
+				return Minimum;
+			else if (relativeChange > Maximum)
+				return Maximum;
+			else
+				return relativeChange;
+
+		}
+
+		private float GetRelativeChange(decimal? previous, decimal? current)
+		{
+			return GetRelativeChange((float)previous.Value, (float)current.Value);
+		}
+
+		private List<float> GetFinancialStatementFeatures(int index, List<FinancialStatement> financialStatements, out DateTime date)
+		{
+			var successiveStatements = financialStatements.Skip(index).Take(2).ToList();
+			var previousStatement = successiveStatements[0];
+			var currentStatement = successiveStatements[1];
+			var previousFeatures = Features.GetFeatures(previousStatement);
+			var currentFeatures = Features.GetFeatures(currentStatement);
+			var features = new List<float>();
+			for (int i = 0; i < previousFeatures.Count; i++)
+			{
+				float previous = previousFeatures[i];
+				float current = currentFeatures[i];
+				float relativeChange = GetRelativeChange(previous, current);
+				features.Add(relativeChange);
+			}
+			date = currentStatement.SourceDate.Value;
+			return features;
+		}
+
+		private List<float> GetFinancialFeatures(FinancialStatement previousStatement, FinancialStatement currentStatement)
+		{
+			var previousFeatures = Features.GetFeatures(previousStatement);
+			var currentFeatures = Features.GetFeatures(currentStatement);
+			var features = new List<float>();
+			for (int i = 0; i < previousFeatures.Count; i++)
+			{
+				float previous = previousFeatures[i];
+				float current = currentFeatures[i];
+				float relativeChange = GetRelativeChange(previous, current);
+				features.Add(relativeChange);
+			}
+			return features;
+		}
+
 		private void GenerateDataPoints(TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
 		{
-			var priceData = tickerCacheEntry.PriceData.Where(p =>
-				(!from.HasValue || p.Date.Value >= from.Value) &&
-				(!to.HasValue || p.Date.Value < to.Value)
-			).ToList();
-			for (int i = 0; i < priceData.Count - _options.HistoryDays - 1; i++)
+			var financialStatements = tickerCacheEntry.FinancialStatements.Where(x => InRange(x.SourceDate, from, to)).ToList();
+			var priceData = tickerCacheEntry.PriceData;
+			var reverseMetrics = tickerCacheEntry.KeyRatios.CompanyMetrics.AsEnumerable().Reverse();
+
+			for (int i = 0; i < financialStatements.Count - 1; i++)
 			{
-				var series = priceData.Skip(i).Take(_options.HistoryDays);
-				var future = priceData[i + _options.HistoryDays + 1];
-				var features = new List<float>();
-				var getRatio = (decimal? x, decimal? y) => (float)(x.Value / y.Value - 1.0m);
-				foreach (var sample in series)
+				var successiveStatements = financialStatements.Skip(i).Take(2).ToList();
+				var previousStatement = successiveStatements[0];
+				var currentStatement = successiveStatements[1];
+
+				DateTime currentDate = currentStatement.SourceDate.Value;
+				DateTime pastDate = currentDate - TimeSpan.FromDays(_options.HistoryDays);
+				DateTime futureDate = currentDate + TimeSpan.FromDays(_options.ForecastDays);
+
+				var keyRatios = reverseMetrics.FirstOrDefault(x => x.EndDate.Value <= currentDate);
+				if (keyRatios == null)
 				{
-					float performance = getRatio(sample.Close, sample.Open);
-					features.Add(performance);
+					Interlocked.Increment(ref _keyRatioErrors);
+					continue;
 				}
-				float label = getRatio(future.Close, series.Last().Close);
+
+				decimal? currentPrice = GetPrice(currentDate, priceData);
+				decimal? pastPrice = GetPrice(pastDate, priceData);
+				decimal? futurePrice = GetPrice(futureDate, priceData);
+				if (
+					!currentPrice.HasValue ||
+					!pastPrice.HasValue ||
+					!futurePrice.HasValue
+				)
+				{
+					Interlocked.Increment(ref _priceErrors);
+					continue;
+				}
+
+				var financialFeatures = GetFinancialFeatures(previousStatement, currentStatement);
+				var keyRatioFeatures = Features.GetFeatures(keyRatios);
+				float pastPerformance = GetRelativeChange(pastPrice, currentPrice);
+				float futurePerformance = GetRelativeChange(currentPrice, futurePrice);
+				var performanceFeatures = new float[] { pastPerformance };
+				var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
-					Label = label
+					Label = futurePerformance
 				};
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
 			}
-		}
-
-		private void WriteInfo(string message)
-		{
-			const bool EnableVerboseOutput = false;
-			if (EnableVerboseOutput)
-				Console.WriteLine(message);
 		}
 	}
 }

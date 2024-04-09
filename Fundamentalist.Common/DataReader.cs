@@ -118,8 +118,8 @@ namespace Fundamentalist.Common
 					AdjustedClose = getDecimal("Adj Close"),
 					Volume = csvReader.GetField<long?>("Volume", longNullConverter)
 				};
-				if (priceDataRow.HasNullValues())
-					break;
+				if (priceDataRow.HasInvalidValues())
+					continue;
 				if (priceDataRow.Date.HasValue && priceDataRow.Open.HasValue && priceDataRow.Open.Value > 0)
 					priceData.Add(priceDataRow);
 			}

@@ -63,28 +63,6 @@ namespace Fundamentalist.Common
 					}
 					features.Add(value);
 				};
-				var addDateTimeValue = () =>
-				{
-					float[] values = new float[]
-					{
-						0.0f,
-						0.0f,
-						0.0f
-					};
-					if (@object != null)
-					{
-						var propertyValue = property.GetValue(@object) as DateTime?;
-						if (propertyValue != null)
-						{
-							var dateTime = propertyValue.Value;
-							values[0] = dateTime.Year;
-							values[1] = dateTime.Month;
-							values[2] = dateTime.Day;
-						}
-					}
-					features.AddRange(values);
-				};
-				bool hasFeatureAttribute = property.CustomAttributes.Any(a => a.AttributeType == typeof(FeatureAttribute));
 				if (
 					propertyType.IsGenericType &&
 					propertyType.GetGenericTypeDefinition() == typeof(Nullable<>)
@@ -93,11 +71,7 @@ namespace Fundamentalist.Common
 					var nullableType = propertyType.GetGenericArguments()[0];
 					if (nullableType == typeof(decimal))
 						addValue();
-					else if (hasFeatureAttribute && nullableType == typeof(DateTime))
-						addDateTimeValue();
 				}
-				else if (hasFeatureAttribute)
-					addValue();
 			}
 			return features;
 		}
