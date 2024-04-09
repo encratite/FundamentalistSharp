@@ -1,10 +1,10 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json.FinancialStatement;
 using Fundamentalist.Common.Json.KeyRatios;
+using Fundamentalist.Trainer.Algorithm;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace Fundamentalist.Trainer
 {
@@ -27,9 +27,59 @@ namespace Fundamentalist.Trainer
 			_priceErrors = 0;
 			LoadIndex();
 			GetDataPoints();
-			TrainAndEvaluateModel();
+			const int Runs = 10;
+			var algorithms = new IAlgorithm[]
+			{
+				new Sdca(),
+				new OnlineGradientDescent(),
+				new LightGbmRegression(),
+				new FastTree(),
+				new FastTreeTweedie(),
+				new FastForest(),
+				new Gam(),
+			};
+			foreach (var algorithm in algorithms)
+			{
+				if (algorithm.IsStochastic)
+				{
+					decimal performanceSum = 0.0m;
+					for (int i = 0; i < Runs; i++)
+					{
+						bool logging = i == 0;
+						TrainAndEvaluateModel(algorithm, logging);
+						var backtest = new Backtest(_testData);
+						decimal performance = backtest.Run();
+						performanceSum += performance;
+					}
+					decimal meanPerformance = performanceSum / Runs;
+					Console.WriteLine($"Mean performance over {Runs} runs: {meanPerformance:+#.00%;-#.00%;+0.00%}");
+				}
+				else
+				{
+					TrainAndEvaluateModel(algorithm, true);
+					for (int portfolioStocks = 3; portfolioStocks <= 6; portfolioStocks++)
+					{
+						var backtest = new Backtest(_testData, portfolioStocks: portfolioStocks);
+						backtest.Run();
+					}
+				}
+			}
 			_trainingData = null;
 			_testData = null;
+		}
+
+		public static decimal? GetPrice(DateTime date, List<PriceData> priceData)
+		{
+			PriceData previousPrice = null;
+			foreach (var price in priceData)
+			{
+				if (price.Date == date)
+					return price.Mean;
+				else if (previousPrice != null && previousPrice.Date >= date && price.Date > date)
+					return previousPrice.Mean;
+				previousPrice = price;
+			}
+			return null;
 		}
 
 		private void LoadIndex()
@@ -133,20 +183,6 @@ namespace Fundamentalist.Trainer
 				_tickerCache[key] = value;
 		}
 
-		private decimal? GetPrice(DateTime date, List<PriceData> priceData)
-		{
-			PriceData previousPrice = null;
-			foreach (var price in priceData)
-			{
-				if (price.Date == date)
-					return price.Mean;
-				else if (previousPrice != null && previousPrice.Date >= date && price.Date > date)
-					return previousPrice.Mean;
-				previousPrice = price;
-			}
-			return null;
-		}
-
 		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
 		{
 			return
@@ -234,9 +270,10 @@ namespace Fundamentalist.Trainer
 				var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
 				var dataPoint = new DataPoint
 				{
-					Ticker = ticker,
 					Features = features.ToArray(),
 					Label = futurePerformance,
+					// Metadata for backtesting, not used by training
+					Ticker = ticker,
 					Date = currentDate,
 					PriceData = priceData
 				};
@@ -245,9 +282,13 @@ namespace Fundamentalist.Trainer
 			}
 		}
 
-		private void TrainAndEvaluateModel()
+		private void TrainAndEvaluateModel(IAlgorithm algorithm, bool logging)
 		{
-			int iterations = 100;
+			var log = (string message) =>
+			{
+				if (logging)
+					Console.WriteLine(message);
+			};
 			var mlContext = new MLContext();
 			const string FeatureName = "Features";
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
@@ -255,25 +296,23 @@ namespace Fundamentalist.Trainer
 			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
 			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
-			var estimator =
-				mlContext.Transforms.NormalizeMinMax("Features")
-				.Append(mlContext.Regression.Trainers.Sdca(maximumNumberOfIterations: iterations));
-			Console.WriteLine($"Training model with {_trainingData.Count} data points with {featureCount} features each, using {iterations} iterations");
+			var estimator = algorithm.GetEstimator(mlContext);
+			log($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {featureCount} features each");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			var model = estimator.Fit(trainingData);
 			stopwatch.Stop();
-			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
+			log($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
 			var metrics = mlContext.Regression.Evaluate(predictions);
-			Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
-			Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
-			Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
-			Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
-			Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
-			_options.Print();
-			Backtest();
+			log($"  LossFunction: {metrics.LossFunction:F3}");
+			log($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
+			log($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
+			log($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
+			log($"  RSquared: {metrics.RSquared:F3}");
+			if (logging)
+				_options.Print();
 		}
 
 		private void SetScores(IDataView predictions)
@@ -285,102 +324,6 @@ namespace Fundamentalist.Trainer
 				dataPoint.Score = scores[i];
 				i++;
 			}
-		}
-
-		private void Backtest()
-		{
-			const decimal InitialMoney = 100000.0m;
-			const decimal MinimumInvestment = 10000.0m;
-			const decimal Fee = 10.0m;
-			const int PortfolioStocks = 5;
-			const int RebalanceDays = 30;
-			const int HistoryDays = 15;
-
-			decimal money = InitialMoney;
-			var portfolio = new List<Stock>();
-
-			Console.WriteLine("Performing backtest");
-			var stopwatch = new Stopwatch();
-			stopwatch.Start();
-
-			DateTime now = _testData.First().Date;
-
-			var log = (string message) => Console.WriteLine($"[{now.ToShortDateString()}] {message}");
-
-			var sellStocks = () =>
-			{
-				foreach (var stock in portfolio)
-				{
-					var priceData = stock.Data.PriceData;
-					decimal? currentPrice = GetPrice(now, priceData);
-					if (currentPrice == null)
-						currentPrice = priceData.Last().Mean;
-					decimal ratio = currentPrice.Value / stock.BuyPrice;
-					decimal change = ratio - 1.0m;
-					decimal sellPrice = ratio * stock.InitialInvestment;
-					decimal gain = change * stock.InitialInvestment;
-					money += sellPrice - Fee;
-					if (ratio > 1.0m)
-						log($"Gained {gain:C0} ({change:+#.00%;-#.00%;+0.00%}) from selling {stock.Data.Ticker} (prediction {stock.Data.Score:F3})");
-					else
-						log($"Lost {Math.Abs(gain):C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker} (prediction {stock.Data.Score:F3})");
-				}
-				portfolio.Clear();
-			};
-
-			DateTime finalDate = _testData.Last().Date + TimeSpan.FromDays(_options.ForecastDays);
-			for (; now < finalDate; now += TimeSpan.FromDays(RebalanceDays))
-			{
-				// Sell all previously owned stocks
-				sellStocks();
-
-				if (money < MinimumInvestment)
-				{
-					log("Ran out of money");
-					break;
-				}
-
-				log($"Rebalancing portfolio with {money:C0} in the bank");
-
-				var available =
-					_testData.Where(x => x.Date >= now - TimeSpan.FromDays(HistoryDays) && x.Date <= now)
-					.OrderByDescending(x => x.Score)
-					.ToList();
-				if (!available.Any())
-				{
-					log("No recent financial statements available");
-					continue;
-				}
-
-				// Rebalance portfolio by buying new stocks
-				int count = Math.Min(PortfolioStocks, available.Count);
-				decimal investment = (money - 2 * count * Fee) / count;
-				foreach (var data in available)
-				{
-					if (portfolio.Any(x => x.Data.Ticker == data.Ticker))
-					{
-						// Make sure we don't accidentally buy the same stock twice
-						continue;
-					}
-					decimal currentPrice = GetPrice(now, data.PriceData).Value;
-					var stock = new Stock
-					{
-						InitialInvestment = investment,
-						BuyDate = now,
-						BuyPrice = currentPrice,
-						Data = data
-					};
-					money -= investment + Fee;
-					portfolio.Add(stock);
-					if (portfolio.Count >= PortfolioStocks)
-						break;
-				}
-			}
-			// Cash out
-			sellStocks();
-
-			stopwatch.Stop();
-			Console.WriteLine($"Finished backtest from {_options.SplitDate.ToShortDateString()} to {now.ToShortDateString()} with {money:C0} in the bank ({money / InitialMoney - 1.0m:+#.00%;-#.00%;+0.00%})");
 		}
 	}
 }

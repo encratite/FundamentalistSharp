@@ -5,12 +5,12 @@ namespace Fundamentalist.Trainer
 {
 	public class DataPoint
 	{
-		[NoColumn]
-		public string Ticker { get; set; }
-
 		public float[] Features { get; set; }
 
 		public float Label { get; set; }
+
+		[NoColumn]
+		public string Ticker { get; set; }
 
 		[NoColumn]
 		public DateTime Date { get; set; }
@@ -18,6 +18,7 @@ namespace Fundamentalist.Trainer
 		[NoColumn]
 		public List<PriceData> PriceData { get; set; }
 
-		public float Score { get; set; }
+		[NoColumn]
+		public float? Score { get; set; }
 	}
 }
