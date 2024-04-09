@@ -12,6 +12,7 @@ namespace Fundamentalist.Trainer
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
 				Console.WriteLine($"{name.Name} <scraper data directory>");
+				return;
 			}
 			string path = Path.Combine(arguments[0], "..");
 			Directory.SetCurrentDirectory(path);
@@ -25,7 +26,7 @@ namespace Fundamentalist.Trainer
 			{
 				HistoryDays = 30,
 				ForecastDays = 30,
-				SplitDate = new DateTime(2019, 1, 1)
+				SplitDate = new DateTime(2022, 1, 1)
 			});
 		}
 	}

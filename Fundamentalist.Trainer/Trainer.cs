@@ -3,9 +3,7 @@ using Fundamentalist.Common.Json.FinancialStatement;
 using Fundamentalist.Common.Json.KeyRatios;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using System;
 using System.Diagnostics;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Fundamentalist.Trainer
 {
@@ -18,14 +16,14 @@ namespace Fundamentalist.Trainer
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
 
-		private int _priceErrors = 0;
 		private int _keyRatioErrors = 0;
+		private int _priceErrors = 0;
 
 		public void Run(TrainerOptions options)
 		{
 			_options = options;
-			_priceErrors = 0;
 			_keyRatioErrors = 0;
+			_priceErrors = 0;
 			LoadIndex();
 			GetDataPoints();
 			TrainAndEvaluateModel();
@@ -53,11 +51,7 @@ namespace Fundamentalist.Trainer
 			int tickersProcessed = 0;
 			int goodTickers = 0;
 			Console.WriteLine("Generating data points");
-			var options = new ParallelOptions
-			{
-				MaxDegreeOfParallelism = Environment.ProcessorCount
-			};
-			Parallel.ForEach(tickers, options, ticker =>
+			Parallel.ForEach(tickers, ticker =>
 			{
 				tickersProcessed++;
 				var cacheEntry = GetCacheEntry(ticker, tickers, tickersProcessed);
@@ -69,6 +63,8 @@ namespace Fundamentalist.Trainer
 				// Console.WriteLine($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
 			});
 			stopwatch.Stop();
+			decimal percentage = 1.0m - (decimal)goodTickers / tickersProcessed;
+			Console.WriteLine($"Discarded {percentage:P1} of tickers due to missing data, also encountered {_keyRatioErrors} key ratio errors and {_priceErrors} price errors");
 			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
@@ -154,7 +150,7 @@ namespace Fundamentalist.Trainer
 			stopwatch.Start();
 			var model = estimator.Fit(trainingData);
 			stopwatch.Stop();
-			Console.WriteLine($"  Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
+			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			var metrics = mlContext.Regression.Evaluate(predictions);
 			Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
