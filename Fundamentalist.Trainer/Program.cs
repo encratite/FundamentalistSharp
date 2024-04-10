@@ -26,7 +26,7 @@ namespace Fundamentalist.Trainer
 			{
 				HistoryDays = 30,
 				ForecastDays = 30,
-				SplitDate = new DateTime(2021, 1, 1)
+				SplitDate = new DateTime(2022, 1, 1)
 			});
 		}
 	}

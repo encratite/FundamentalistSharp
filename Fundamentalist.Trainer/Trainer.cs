@@ -20,6 +20,7 @@ namespace Fundamentalist.Trainer
 		private int _keyRatioErrors = 0;
 		private int _priceErrors = 0;
 
+
 		public void Run(TrainerOptions options)
 		{
 			_options = options;
@@ -27,6 +28,14 @@ namespace Fundamentalist.Trainer
 			_priceErrors = 0;
 			LoadIndex();
 			GetDataPoints();
+
+			var backtestLog = new List<PerformanceData>();
+			var logPerformance = (string description, decimal performance) =>
+			{
+				var performanceData = new PerformanceData(description, performance);
+				backtestLog.Add(performanceData);
+			};
+
 			const int Runs = 10;
 			var algorithms = new IAlgorithm[]
 			{
@@ -38,6 +47,7 @@ namespace Fundamentalist.Trainer
 				new FastForest(),
 				new Gam(),
 			};
+			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
 			{
 				if (algorithm.IsStochastic)
@@ -47,20 +57,29 @@ namespace Fundamentalist.Trainer
 					{
 						bool logging = i == 0;
 						TrainAndEvaluateModel(algorithm, logging);
-						var backtest = new Backtest(_testData);
+						backtest = new Backtest(_testData, _indexPriceData);
 						decimal performance = backtest.Run();
 						performanceSum += performance;
 					}
 					decimal meanPerformance = performanceSum / Runs;
 					Console.WriteLine($"Mean performance over {Runs} runs: {meanPerformance:+#.00%;-#.00%;+0.00%}");
+					logPerformance(algorithm.Name, meanPerformance);
 				}
 				else
 				{
 					TrainAndEvaluateModel(algorithm, true);
-					var backtest = new Backtest(_testData);
-					backtest.Run();
+					backtest = new Backtest(_testData, _indexPriceData);
+					decimal performance = backtest.Run();
+					logPerformance(algorithm.Name, performance);
 				}
 			}
+
+			logPerformance("S&P 500", backtest.IndexPerformance);
+			Console.WriteLine("Performance summary:");
+			int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length;
+			foreach (var entry in backtestLog)
+				Console.WriteLine($"  {entry.Description.PadRight(maxPadding)}: {entry.Performance:+#.00%;-#.00%;+0.00%}");
+
 			_trainingData = null;
 			_testData = null;
 		}
@@ -189,7 +208,7 @@ namespace Fundamentalist.Trainer
 
 		private float GetRelativeChange(float previous, float current)
 		{
-			const float Maximum = 100.0f;
+			const float Maximum = 10.0f;
 			const float Minimum = -Maximum;
 			const float Epsilon = 1e-3f;
 			if (previous == 0.0f)
@@ -236,7 +255,6 @@ namespace Fundamentalist.Trainer
 				var currentStatement = successiveStatements[1];
 
 				DateTime currentDate = currentStatement.SourceDate.Value;
-				DateTime pastDate = currentDate - TimeSpan.FromDays(_options.HistoryDays);
 				DateTime futureDate = currentDate + TimeSpan.FromDays(_options.ForecastDays);
 
 				var keyRatios = reverseMetrics.FirstOrDefault(x => x.EndDate.Value <= currentDate);
@@ -247,11 +265,9 @@ namespace Fundamentalist.Trainer
 				}
 
 				decimal? currentPrice = GetPrice(currentDate, priceData);
-				decimal? pastPrice = GetPrice(pastDate, priceData);
 				decimal? futurePrice = GetPrice(futureDate, priceData);
 				if (
 					!currentPrice.HasValue ||
-					!pastPrice.HasValue ||
 					!futurePrice.HasValue
 				)
 				{
@@ -259,13 +275,27 @@ namespace Fundamentalist.Trainer
 					continue;
 				}
 
+				int upDays = 0;
+				var performanceFeatures = new List<float>();
+				var history = priceData.Where(x => x.Date < currentDate).Reverse().Take(_options.HistoryDays).ToList();
+				if (history.Count != _options.HistoryDays)
+				{
+					Interlocked.Increment(ref _priceErrors);
+					continue;
+				}
+				foreach (var sample in history)
+				{
+					double performance = GetRelativeChange(sample.Mean, currentPrice.Value);
+					performanceFeatures.Add((float)performance);
+					if (performance > 0)
+						upDays++;
+				}
+				performanceFeatures.Add((float)upDays);
+
 				var financialFeatures = GetFinancialFeatures(previousStatement, currentStatement);
 				var keyRatioFeatures = Features.GetFeatures(keyRatios);
-				float pastPerformance = GetRelativeChange(pastPrice, currentPrice);
 				float futurePerformance = GetRelativeChange(currentPrice, futurePrice);
-				var performanceFeatures = new float[] { pastPerformance };
-				// var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
-				var features = keyRatioFeatures.Concat(performanceFeatures);
+				var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),

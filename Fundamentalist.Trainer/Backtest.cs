@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using Fundamentalist.Common;
+using System.Diagnostics;
 
 namespace Fundamentalist.Trainer
 {
@@ -11,6 +12,9 @@ namespace Fundamentalist.Trainer
 
 	internal class Backtest
 	{
+		private List<DataPoint> _testData;
+		private List<PriceData> _indexPriceData;
+
 		private decimal _initialMoney;
 		private decimal _minimumInvestment;
 		private decimal _fee;
@@ -19,20 +23,23 @@ namespace Fundamentalist.Trainer
 		private int _historyDays;
 		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.FinalOnly;
 
-		private List<DataPoint> _testData;
+		public decimal IndexPerformance { get; set; }
 
 		public Backtest
 		(
 			List<DataPoint> testData,
+			List<PriceData> indexPriceData,
 			decimal initialMoney = 100000.0m,
 			decimal minimumInvestment = 10000.0m,
 			decimal fee = 10.0m,
-			int portfolioStocks = 5,
+			int portfolioStocks = 20,
 			int rebalanceDays = 30,
-			int historyDays = 15
+			int historyDays = 30
 		)
 		{
 			_testData = testData;
+			_indexPriceData = indexPriceData;
+
 			_initialMoney = initialMoney;
 			_minimumInvestment = minimumInvestment;
 			_fee = fee;
@@ -46,7 +53,7 @@ namespace Fundamentalist.Trainer
 			decimal money = _initialMoney;
 			var portfolio = new List<Stock>();
 
-			DateTime initialDate = _testData.First().Date;
+			DateTime initialDate = _testData.Take(2 * _portfolioStocks).Last().Date;
 			DateTime now = initialDate;
 
 			var log = (string message, BacktestLoggingLevel loggingLevel = BacktestLoggingLevel.All) =>
@@ -131,11 +138,18 @@ namespace Fundamentalist.Trainer
 			// Cash out
 			sellStocks();
 
+			decimal? indexPast = Trainer.GetPrice(initialDate, _indexPriceData);
+			decimal? indexNow = Trainer.GetPrice(now, _indexPriceData);
+			if (indexNow == null)
+				indexNow = _indexPriceData.Last().Mean;
+			IndexPerformance = indexNow.Value / indexPast.Value - 1.0m;
+
 			stopwatch.Stop();
 			decimal performance = money / _initialMoney - 1.0m;
 			if (_loggingLevel >= BacktestLoggingLevel.FinalOnly)
 			{
 				Console.WriteLine($"Finished backtest from {initialDate.ToShortDateString()} to {now.ToShortDateString()} with {money:C0} in the bank ({performance:+#.00%;-#.00%;+0.00%})");
+				// Console.WriteLine($"S&P 500 performance during that time: {IndexPerformance:+#.00%;-#.00%;+0.00%}");
 				Console.WriteLine($"  portfolioStocks: {_portfolioStocks}");
 				Console.WriteLine($"  rebalanceDays: {_rebalanceDays}");
 				Console.WriteLine($"  historyDays: {_historyDays}");
