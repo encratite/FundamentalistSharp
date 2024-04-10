@@ -57,7 +57,7 @@ namespace Fundamentalist.Trainer
 					{
 						bool logging = i == 0;
 						TrainAndEvaluateModel(algorithm, logging);
-						backtest = new Backtest(_testData, _indexPriceData);
+						backtest = new Backtest(_testData, _indexPriceData, holdDays: _options.ForecastDays);
 						decimal performance = backtest.Run();
 						performanceSum += performance;
 					}
@@ -68,7 +68,7 @@ namespace Fundamentalist.Trainer
 				else
 				{
 					TrainAndEvaluateModel(algorithm, true);
-					backtest = new Backtest(_testData, _indexPriceData);
+					backtest = new Backtest(_testData, _indexPriceData, holdDays: _options.ForecastDays);
 					decimal performance = backtest.Run();
 					logPerformance(algorithm.Name, performance);
 				}

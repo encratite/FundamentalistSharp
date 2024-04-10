@@ -19,8 +19,8 @@ namespace Fundamentalist.Trainer
 		private decimal _minimumInvestment;
 		private decimal _fee;
 		private int _portfolioStocks;
-		private int _rebalanceDays;
 		private int _historyDays;
+		private int _holdDays;
 		private float _minimumScore;
 		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.FinalOnly;
 
@@ -34,9 +34,9 @@ namespace Fundamentalist.Trainer
 			decimal minimumInvestment = 10000.0m,
 			decimal fee = 10.0m,
 			int portfolioStocks = 10,
-			int rebalanceDays = 30,
 			int historyDays = 30,
-			float minimumScore = 0.2f
+			int holdDays = 30,
+			float minimumScore = 0.08f
 		)
 		{
 			_testData = testData;
@@ -46,8 +46,8 @@ namespace Fundamentalist.Trainer
 			_minimumInvestment = minimumInvestment;
 			_fee = fee;
 			_portfolioStocks = portfolioStocks;
-			_rebalanceDays = rebalanceDays;
 			_historyDays = historyDays;
+			_holdDays = holdDays;
 			_minimumScore = minimumScore;
 		}
 
@@ -69,10 +69,14 @@ namespace Fundamentalist.Trainer
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
-			var sellStocks = () =>
+			var sellStocks = (bool sellAll, bool sellExpired) =>
 			{
-				foreach (var stock in portfolio)
+				foreach (var stock in portfolio.ToList())
 				{
+					bool hasExpired = now - stock.BuyDate > TimeSpan.FromDays(_holdDays);
+					bool sellStock = sellAll || (sellExpired && hasExpired);
+					if (!sellStock)
+						continue;
 					var priceData = stock.Data.PriceData;
 					decimal? currentPrice = Trainer.GetPrice(now, priceData);
 					if (currentPrice == null)
@@ -86,36 +90,52 @@ namespace Fundamentalist.Trainer
 						log($"Gained {gain:C0} ({change:+#.00%;-#.00%;+0.00%}) from selling {stock.Data.Ticker} (prediction {stock.Data.Score.Value:F3})");
 					else
 						log($"Lost {Math.Abs(gain):C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker} (prediction {stock.Data.Score.Value:F3})");
+					portfolio.Remove(stock);
 				}
-				portfolio.Clear();
 			};
 
-			DateTime finalDate = _testData.Last().Date + TimeSpan.FromDays(_rebalanceDays);
-			for (; now < finalDate; now += TimeSpan.FromDays(_rebalanceDays))
+			foreach (var currentDataPoint in _testData)
 			{
-				// Sell all previously owned stocks
-				sellStocks();
+				now = currentDataPoint.Date;
 
-				if (money < _minimumInvestment)
+				// Sell expired stocks
+				sellStocks(false, true);
+
+				if (money < 0)
 				{
 					log("Ran out of money");
 					break;
+				}
+				else if (money < _minimumInvestment)
+				{
+					// Not enough money to rebalance
+					continue;
 				}
 
 				log($"Rebalancing portfolio with {money:C0} in the bank");
 
 				var available =
-					_testData.Where(x => x.Date >= now - TimeSpan.FromDays(_historyDays) && x.Date <= now && x.Score.Value >= _minimumScore)
+					_testData.Where(x =>
+						x.Date >= now - TimeSpan.FromDays(_historyDays) &&
+						x.Date <= now &&
+						x.Score.Value >= _minimumScore &&
+						!portfolio.Any(x => x.Data.Ticker == currentDataPoint.Ticker)
+					)
 					.OrderByDescending(x => x.Score.Value)
 					.ToList();
 				if (!available.Any())
 				{
-					log("No recent financial statements available");
 					continue;
 				}
 
-				// Rebalance portfolio by buying new stocks
-				int count = Math.Min(_portfolioStocks, available.Count);
+				int count = Math.Min(_portfolioStocks - portfolio.Count, available.Count);
+				if (count <= 0)
+				{
+					// There's nothing to buy
+					continue;
+				}
+
+				// Buy new stocks
 				decimal investment = (money - 2 * count * _fee) / count;
 				foreach (var data in available)
 				{
@@ -139,7 +159,7 @@ namespace Fundamentalist.Trainer
 				}
 			}
 			// Cash out
-			sellStocks();
+			sellStocks(true, false);
 
 			decimal? indexPast = Trainer.GetPrice(initialDate, _indexPriceData);
 			decimal? indexNow = Trainer.GetPrice(now, _indexPriceData);
@@ -154,7 +174,6 @@ namespace Fundamentalist.Trainer
 				Console.WriteLine($"Finished backtest from {initialDate.ToShortDateString()} to {now.ToShortDateString()} with {money:C0} in the bank ({performance:+#.00%;-#.00%;+0.00%})");
 				// Console.WriteLine($"S&P 500 performance during that time: {IndexPerformance:+#.00%;-#.00%;+0.00%}");
 				Console.WriteLine($"  portfolioStocks: {_portfolioStocks}");
-				Console.WriteLine($"  rebalanceDays: {_rebalanceDays}");
 				Console.WriteLine($"  historyDays: {_historyDays}");
 			}
 			return performance;
