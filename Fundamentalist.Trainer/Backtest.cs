@@ -21,6 +21,7 @@ namespace Fundamentalist.Trainer
 		private int _portfolioStocks;
 		private int _rebalanceDays;
 		private int _historyDays;
+		private float _minimumScore;
 		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.FinalOnly;
 
 		public decimal IndexPerformance { get; set; }
@@ -32,9 +33,10 @@ namespace Fundamentalist.Trainer
 			decimal initialMoney = 100000.0m,
 			decimal minimumInvestment = 10000.0m,
 			decimal fee = 10.0m,
-			int portfolioStocks = 20,
+			int portfolioStocks = 10,
 			int rebalanceDays = 30,
-			int historyDays = 30
+			int historyDays = 30,
+			float minimumScore = 0.2f
 		)
 		{
 			_testData = testData;
@@ -46,6 +48,7 @@ namespace Fundamentalist.Trainer
 			_portfolioStocks = portfolioStocks;
 			_rebalanceDays = rebalanceDays;
 			_historyDays = historyDays;
+			_minimumScore = minimumScore;
 		}
 
 		public decimal Run()
@@ -102,7 +105,7 @@ namespace Fundamentalist.Trainer
 				log($"Rebalancing portfolio with {money:C0} in the bank");
 
 				var available =
-					_testData.Where(x => x.Date >= now - TimeSpan.FromDays(_historyDays) && x.Date <= now)
+					_testData.Where(x => x.Date >= now - TimeSpan.FromDays(_historyDays) && x.Date <= now && x.Score.Value >= _minimumScore)
 					.OrderByDescending(x => x.Score.Value)
 					.ToList();
 				if (!available.Any())

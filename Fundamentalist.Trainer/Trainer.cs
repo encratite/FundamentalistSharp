@@ -78,7 +78,7 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine("Performance summary:");
 			int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length;
 			foreach (var entry in backtestLog)
-				Console.WriteLine($"  {entry.Description.PadRight(maxPadding)}: {entry.Performance:+#.00%;-#.00%;+0.00%}");
+				Console.WriteLine($"  {entry.Description.PadRight(maxPadding)}: {entry.Performance:#.00%}");
 
 			_trainingData = null;
 			_testData = null;
