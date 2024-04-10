@@ -7,6 +7,7 @@
 		public const string FinancialStatementsDirectory = "FinancialStatements";
 		public const string KeyRatiosDirectory = "KeyRatios";
 		public const string PriceDataDirectory = "PriceData";
+		public const string ScoresDirectory = "Scores";
 
 		public const string StocksPath = "Stocks.csv";
 

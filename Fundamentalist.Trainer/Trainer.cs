@@ -50,6 +50,7 @@ namespace Fundamentalist.Trainer
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
 			{
+				string scoreName = $"{algorithm.Name}-{_options.HistoryDays}-{_options.ForecastDays}";
 				if (algorithm.IsStochastic)
 				{
 					decimal performanceSum = 0.0m;
@@ -57,7 +58,8 @@ namespace Fundamentalist.Trainer
 					{
 						bool logging = i == 0;
 						TrainAndEvaluateModel(algorithm, logging);
-						backtest = new Backtest(_testData, _indexPriceData, holdDays: _options.ForecastDays);
+						// DumpScores(scoreName);
+						backtest = new Backtest(_testData, _indexPriceData);
 						decimal performance = backtest.Run();
 						performanceSum += performance;
 					}
@@ -68,17 +70,20 @@ namespace Fundamentalist.Trainer
 				else
 				{
 					TrainAndEvaluateModel(algorithm, true);
-					backtest = new Backtest(_testData, _indexPriceData, holdDays: _options.ForecastDays);
+					// DumpScores(scoreName);
+					backtest = new Backtest(_testData, _indexPriceData);
 					decimal performance = backtest.Run();
 					logPerformance(algorithm.Name, performance);
 				}
 			}
 
 			logPerformance("S&P 500", backtest.IndexPerformance);
+			Console.WriteLine("Options used:");
+			_options.Print();
 			Console.WriteLine("Performance summary:");
-			int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length;
+			int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length + 1;
 			foreach (var entry in backtestLog)
-				Console.WriteLine($"  {entry.Description.PadRight(maxPadding)}: {entry.Performance:#.00%}");
+				Console.WriteLine($"  {(entry.Description + ":").PadRight(maxPadding)} {entry.Performance:#.00%}");
 
 			_trainingData = null;
 			_testData = null;
@@ -123,8 +128,8 @@ namespace Fundamentalist.Trainer
 				var cacheEntry = GetCacheEntry(ticker, tickers, tickersProcessed);
 				if (cacheEntry == null)
 					return;
-				GenerateDataPoints(ticker.Ticker, cacheEntry, null, _options.SplitDate, _trainingData);
-				GenerateDataPoints(ticker.Ticker, cacheEntry, _options.SplitDate, null, _testData);
+				GenerateDataPoints(ticker.Ticker, cacheEntry, null, _options.TestDate, _trainingData);
+				GenerateDataPoints(ticker.Ticker, cacheEntry, _options.TestDate, null, _testData);
 				goodTickers++;
 				// Console.WriteLine($"Generated data points for {ticker.Ticker} ({tickersProcessed}/{tickers.Count}), discarded {1.0m - (decimal)goodTickers / tickersProcessed:P1} of tickers");
 			});
@@ -208,7 +213,7 @@ namespace Fundamentalist.Trainer
 
 		private float GetRelativeChange(float previous, float current)
 		{
-			const float Maximum = 10.0f;
+			const float Maximum = 5.0f;
 			const float Minimum = -Maximum;
 			const float Epsilon = 1e-3f;
 			if (previous == 0.0f)
@@ -227,34 +232,15 @@ namespace Fundamentalist.Trainer
 			return GetRelativeChange((float)previous.Value, (float)current.Value);
 		}
 
-		private List<float> GetFinancialFeatures(FinancialStatement previousStatement, FinancialStatement currentStatement)
-		{
-			var previousFeatures = Features.GetFeatures(previousStatement);
-			var currentFeatures = Features.GetFeatures(currentStatement);
-			var features = new List<float>();
-			for (int i = 0; i < previousFeatures.Count; i++)
-			{
-				float previous = previousFeatures[i];
-				float current = currentFeatures[i];
-				float relativeChange = GetRelativeChange(previous, current);
-				features.Add(relativeChange);
-			}
-			return features;
-		}
-
 		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
 		{
-			var financialStatements = tickerCacheEntry.FinancialStatements.Where(x => InRange(x.SourceDate, from, to)).ToList();
+			var financialStatements = tickerCacheEntry.FinancialStatements.Where(x => InRange(x.SourceDate, from, to) && x.SourceDate.Value >= _options.TrainingDate).ToList();
 			var priceData = tickerCacheEntry.PriceData;
 			var reverseMetrics = tickerCacheEntry.KeyRatios.CompanyMetrics.AsEnumerable().Reverse();
 
-			for (int i = 0; i < financialStatements.Count - 1; i++)
+			foreach (var financialStatement in financialStatements)
 			{
-				var successiveStatements = financialStatements.Skip(i).Take(2).ToList();
-				var previousStatement = successiveStatements[0];
-				var currentStatement = successiveStatements[1];
-
-				DateTime currentDate = currentStatement.SourceDate.Value;
+				DateTime currentDate = financialStatement.SourceDate.Value;
 				DateTime futureDate = currentDate + TimeSpan.FromDays(_options.ForecastDays);
 
 				var keyRatios = reverseMetrics.FirstOrDefault(x => x.EndDate.Value <= currentDate);
@@ -292,10 +278,12 @@ namespace Fundamentalist.Trainer
 				}
 				performanceFeatures.Add((float)upDays);
 
-				var financialFeatures = GetFinancialFeatures(previousStatement, currentStatement);
+				var financialFeatures = Features.GetFeatures(financialStatement);
 				var keyRatioFeatures = Features.GetFeatures(keyRatios);
 				float futurePerformance = GetRelativeChange(currentPrice, futurePrice);
+				float label = futurePerformance;
 				var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
+				var features = performanceFeatures;
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
@@ -333,14 +321,14 @@ namespace Fundamentalist.Trainer
 			log($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
+			/*
 			var metrics = mlContext.Regression.Evaluate(predictions);
 			log($"  LossFunction: {metrics.LossFunction:F3}");
 			log($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
 			log($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
 			log($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
 			log($"  RSquared: {metrics.RSquared:F3}");
-			if (logging)
-				_options.Print();
+			*/
 		}
 
 		private void SetScores(IDataView predictions)
@@ -351,6 +339,23 @@ namespace Fundamentalist.Trainer
 			{
 				dataPoint.Score = scores[i];
 				i++;
+			}
+		}
+
+		private void DumpScores(string name)
+		{
+			string directory = Path.Combine(Configuration.DataDirectory, Configuration.ScoresDirectory);
+			if (!Directory.Exists(directory))
+				Directory.CreateDirectory(directory);
+			string path = Path.Combine(directory, $"{name}.csv");
+			using (var writer = new StringWriter())
+			{
+				writer.WriteLine("Score,Performance");
+				foreach (var dataPoint in _testData)
+				{
+					writer.WriteLine($"{dataPoint.Score},{dataPoint.Label}");
+				}
+				File.WriteAllText(path, writer.ToString());
 			}
 		}
 	}
