@@ -1,5 +1,7 @@
 ﻿using Fundamentalist.Common;
+using Newtonsoft.Json.Serialization;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 
 namespace Fundamentalist.Trainer
 {
@@ -17,7 +19,6 @@ namespace Fundamentalist.Trainer
 
 		private decimal _initialMoney;
 		private decimal _minimumInvestment;
-		private decimal _fee;
 		private int _portfolioStocks;
 		private int _historyDays;
 		private int _rebalanceDays;
@@ -32,7 +33,6 @@ namespace Fundamentalist.Trainer
 			SortedList<DateTime, PriceData> indexPriceData,
 			decimal initialMoney = 100000.0m,
 			decimal minimumInvestment = 50000.0m,
-			decimal fee = 10.0m,
 			int portfolioStocks = 10,
 			int historyDays = 7,
 			int rebalanceDays = 7,
@@ -44,7 +44,7 @@ namespace Fundamentalist.Trainer
 
 			_initialMoney = initialMoney;
 			_minimumInvestment = minimumInvestment;
-			_fee = fee;
+
 			_portfolioStocks = portfolioStocks;
 			_historyDays = historyDays;
 			_rebalanceDays = rebalanceDays;
@@ -80,14 +80,15 @@ namespace Fundamentalist.Trainer
 						currentPrice = priceData.Values.Last().Close;
 					decimal ratio = currentPrice.Value / stock.BuyPrice;
 					decimal change = ratio - 1.0m;
-					decimal sellPrice = ratio * stock.InitialInvestment;
-					decimal gain = change * stock.InitialInvestment;
-					money += sellPrice - _fee;
-					feesPaid += _fee;
+					decimal fees = GetTransactionFees(stock.Count, currentPrice.Value, true);
+					decimal sellPrice = stock.Count * currentPrice.Value;
+					decimal gain = change * sellPrice;
+					money += sellPrice - fees;
+					feesPaid += fees;
 					if (ratio > 1.0m)
 						log($"Gained {gain:C0} ({change:+#.00%;-#.00%;+0.00%}) from selling {stock.Data.Ticker} (prediction {stock.Data.Score.Value:F3})");
 					else
-						log($"Lost {Math.Abs(gain):C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker} (prediction {stock.Data.Score.Value:F3})");
+						log($"Lost {- gain:C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker} (prediction {stock.Data.Score.Value:F3})");
 				}
 				portfolio.Clear();
 			};
@@ -121,15 +122,18 @@ namespace Fundamentalist.Trainer
 					continue;
 				}
 
-				int count = Math.Min(_portfolioStocks, available.Count);
-				if (count <= 0)
+				int availableCount = Math.Min(_portfolioStocks, available.Count);
+				if (availableCount <= 0)
 				{
 					// There's nothing to buy
 					continue;
 				}
 
+				const decimal EstimatedFees = 10.0m;
+				const decimal Spread = 0.004m;
+
 				// Buy new stocks
-				decimal investment = (money - 2 * _portfolioStocks * _fee) / _portfolioStocks;
+				decimal investment = (money - 2 * _portfolioStocks * EstimatedFees) / _portfolioStocks;
 				foreach (var data in available)
 				{
 					if (portfolio.Any(x => x.Data.Ticker == data.Ticker))
@@ -143,15 +147,19 @@ namespace Fundamentalist.Trainer
 						// Lacking price data
 						continue;
 					}
+					// Simulate spread
+					currentPrice *= 1.0m + Spread;
+					int count = (int)Math.Floor(investment / currentPrice.Value);
 					var stock = new Stock
 					{
-						InitialInvestment = investment,
+						Count = count,
 						BuyDate = now,
 						BuyPrice = currentPrice.Value,
 						Data = data
 					};
-					money -= investment + _fee;
-					feesPaid += _fee;
+					decimal fees = GetTransactionFees(count, currentPrice.Value, false);
+					money -= count * currentPrice.Value + fees;
+					feesPaid += fees;
 					portfolio.Add(stock);
 					if (portfolio.Count >= _portfolioStocks)
 						break;
@@ -175,6 +183,19 @@ namespace Fundamentalist.Trainer
 			log($"  minimumScore: {_minimumScore}", BacktestLoggingLevel.FinalOnly);
 			log($"  feesPaid: {feesPaid:C}", BacktestLoggingLevel.FinalOnly);
 			return performance;
+		}
+
+		decimal GetTransactionFees(int count, decimal price, bool selling)
+		{
+			decimal commission = Math.Max(count * 0.0049m, 0.99m);
+			decimal settlementFees = count * 0.003m;
+			decimal secFees = Math.Max(count * price * 0.000008m, 0.01m);
+			decimal tradingActivitesFees = Math.Min(Math.Max(count * 0.000145m, 0.01m), 5.95m);
+			decimal platformFees = Math.Max(count * 0.005m, 0.01m);
+			decimal transactionFees = commission + settlementFees + platformFees;
+			if (selling)
+				transactionFees += secFees + tradingActivitesFees;
+			return transactionFees;
 		}
 	}
 }
