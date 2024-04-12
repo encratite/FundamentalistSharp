@@ -7,6 +7,13 @@
 		public DateTime? ReportDate { get; set; }
 		public DateTime? EndDate { get; set; }
 
+		public bool ValidDates()
+		{
+			return
+				(!ReportDate.HasValue || ReportDate <= SourceDate) &&
+				(!EndDate.HasValue || EndDate <= SourceDate);
+		}
+
 		public override string ToString()
 		{
 			if (Source != null && EndDate.HasValue)

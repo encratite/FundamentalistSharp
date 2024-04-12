@@ -42,7 +42,7 @@ namespace Fundamentalist.Common
 			return autoSuggestStock.SecId;
 		}
 
-		public static List<FinancialStatement> GetFinancialStatements(CompanyTicker ticker)
+		public static List<FinancialStatement> GetFinancialStatements(CompanyTicker ticker, ref int brokenCount)
 		{
 			string path = ticker.GetJsonPath(Configuration.FinancialStatementsDirectory);
 			string json = ReadFile(path);
@@ -66,6 +66,16 @@ namespace Fundamentalist.Common
 				)
 				.OrderBy(f => f.SourceDate)
 				.ToList();
+			int previousCount = financialStatements.Count;
+			// Make sure that the dates are consistent
+			financialStatements  = financialStatements.Where(x =>
+				x.BalanceSheets.ValidDates() &&
+				x.CashFlow.ValidDates() &&
+				x.IncomeStatement.ValidDates() &&
+				x.BalanceSheets.SourceDate == x.CashFlow.SourceDate &&
+				x.BalanceSheets.SourceDate == x.IncomeStatement.SourceDate
+			).ToList();
+			brokenCount = previousCount - financialStatements.Count;
 			return financialStatements;
 		}
 

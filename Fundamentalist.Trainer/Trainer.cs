@@ -17,9 +17,9 @@ namespace Fundamentalist.Trainer
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
 
+		private int _financialStatementErrors = 0;
 		private int _keyRatioErrors = 0;
 		private int _priceErrors = 0;
-
 
 		public void Run(TrainerOptions options)
 		{
@@ -140,7 +140,7 @@ namespace Fundamentalist.Trainer
 			_testData.Sort((x, y) => x.Date.CompareTo(y.Date));
 			stopwatch.Stop();
 			decimal percentage = 1.0m - (decimal)goodTickers / tickersProcessed;
-			Console.WriteLine($"Discarded {percentage:P1} of tickers due to missing data, also encountered {_keyRatioErrors} key ratio errors and {_priceErrors} price errors");
+			Console.WriteLine($"Discarded {percentage:P1} of tickers due to missing data, also encountered {_financialStatementErrors} broken financial statements, {_keyRatioErrors} key ratio errors and {_priceErrors} price errors");
 			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
@@ -165,10 +165,17 @@ namespace Fundamentalist.Trainer
 			List<FinancialStatement> financialStatements = null;
 			if (EnableFinancialStatements)
 			{
-				financialStatements = DataReader.GetFinancialStatements(ticker);
+				int brokenCount = 0;
+				financialStatements = DataReader.GetFinancialStatements(ticker, ref brokenCount);
 				if (financialStatements == null)
 				{
 					error("financial statements");
+					return null;
+				}
+				if (brokenCount > 0)
+				{
+					lock (this)
+						_financialStatementErrors += brokenCount;
 					return null;
 				}
 			}
