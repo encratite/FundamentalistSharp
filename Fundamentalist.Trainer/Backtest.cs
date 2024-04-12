@@ -13,7 +13,7 @@ namespace Fundamentalist.Trainer
 	internal class Backtest
 	{
 		private List<DataPoint> _testData;
-		private List<PriceData> _indexPriceData;
+		private SortedList<DateTime, PriceData> _indexPriceData;
 
 		private decimal _initialMoney;
 		private decimal _minimumInvestment;
@@ -29,13 +29,13 @@ namespace Fundamentalist.Trainer
 		public Backtest
 		(
 			List<DataPoint> testData,
-			List<PriceData> indexPriceData,
+			SortedList<DateTime, PriceData> indexPriceData,
 			decimal initialMoney = 100000.0m,
 			decimal minimumInvestment = 50000.0m,
 			decimal fee = 10.0m,
 			int portfolioStocks = 10,
-			int historyDays = 30,
-			int rebalanceDays = 28,
+			int historyDays = 7,
+			int rebalanceDays = 7,
 			float minimumScore = 0.00f
 		)
 		{
@@ -75,9 +75,9 @@ namespace Fundamentalist.Trainer
 				foreach (var stock in portfolio)
 				{
 					var priceData = stock.Data.PriceData;
-					decimal? currentPrice = Trainer.GetPrice(now, priceData);
+					decimal? currentPrice = Trainer.GetOpenPrice(now, priceData);
 					if (currentPrice == null)
-						currentPrice = priceData.Last().Mean;
+						currentPrice = priceData.Values.Last().Close;
 					decimal ratio = currentPrice.Value / stock.BuyPrice;
 					decimal change = ratio - 1.0m;
 					decimal sellPrice = ratio * stock.InitialInvestment;
@@ -93,7 +93,7 @@ namespace Fundamentalist.Trainer
 			};
 
 			DateTime finalTime = _testData.Last().Date + TimeSpan.FromDays(_historyDays);
-			while (now.DayOfWeek != DayOfWeek.Monday)
+			while (now.DayOfWeek != DayOfWeek.Friday)
 				now += TimeSpan.FromDays(1);
 			for (; now < finalTime; now += TimeSpan.FromDays(_rebalanceDays))
 			{
@@ -137,7 +137,7 @@ namespace Fundamentalist.Trainer
 						// Make sure we don't accidentally buy the same stock twice
 						continue;
 					}
-					decimal? currentPrice = Trainer.GetPrice(now, data.PriceData);
+					decimal? currentPrice = Trainer.GetOpenPrice(now, data.PriceData);
 					if (currentPrice == null)
 					{
 						// Lacking price data
@@ -160,10 +160,10 @@ namespace Fundamentalist.Trainer
 			// Cash out
 			sellStocks();
 
-			decimal? indexPast = Trainer.GetPrice(initialDate, _indexPriceData);
-			decimal? indexNow = Trainer.GetPrice(now, _indexPriceData);
+			decimal? indexPast = Trainer.GetClosePrice(initialDate, _indexPriceData);
+			decimal? indexNow = Trainer.GetClosePrice(now, _indexPriceData);
 			if (indexNow == null)
-				indexNow = _indexPriceData.Last().Mean;
+				indexNow = _indexPriceData.Values.Last().Close;
 			IndexPerformance = indexNow.Value / indexPast.Value - 1.0m;
 
 			stopwatch.Stop();

@@ -11,7 +11,7 @@ namespace Fundamentalist.Trainer
 	internal class Trainer
 	{
 		private TrainerOptions _options;
-		private List<PriceData> _indexPriceData = null;
+		private SortedList<DateTime, PriceData> _indexPriceData = null;
 		private Dictionary<string, TickerCacheEntry> _tickerCache = new Dictionary<string, TickerCacheEntry>();
 
 		private List<DataPoint> _trainingData;
@@ -50,7 +50,7 @@ namespace Fundamentalist.Trainer
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
 			{
-				string scoreName = $"{algorithm.Name}-{_options.HistoryDays}-{_options.ForecastDays}";
+				string scoreName = $"{algorithm.Name}-{_options.ForecastDays}";
 				if (algorithm.IsStochastic)
 				{
 					decimal performanceSum = 0.0m;
@@ -58,7 +58,7 @@ namespace Fundamentalist.Trainer
 					{
 						bool logging = i == 0;
 						TrainAndEvaluateModel(algorithm, logging);
-						// DumpScores(scoreName);
+						DumpScores(scoreName);
 						backtest = new Backtest(_testData, _indexPriceData);
 						decimal performance = backtest.Run();
 						performanceSum += performance;
@@ -70,7 +70,7 @@ namespace Fundamentalist.Trainer
 				else
 				{
 					TrainAndEvaluateModel(algorithm, true);
-					// DumpScores(scoreName);
+					DumpScores(scoreName);
 					backtest = new Backtest(_testData, _indexPriceData);
 					decimal performance = backtest.Run();
 					logPerformance(algorithm.Name, performance);
@@ -89,18 +89,22 @@ namespace Fundamentalist.Trainer
 			_testData = null;
 		}
 
-		public static decimal? GetPrice(DateTime date, List<PriceData> priceData)
+		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
 		{
-			PriceData previousPrice = null;
-			foreach (var price in priceData)
-			{
-				if (price.Date == date)
-					return price.Mean;
-				else if (previousPrice != null && previousPrice.Date >= date && price.Date > date)
-					return previousPrice.Mean;
-				previousPrice = price;
-			}
-			return null;
+			PriceData output;
+			if (priceData.TryGetValue(date, out output))
+				return output.Open;
+			else
+				return null;
+		}
+
+		public static decimal? GetClosePrice(DateTime date, SortedList<DateTime, PriceData> priceData)
+		{
+			PriceData output;
+			if (priceData.TryGetValue(date, out output))
+				return output.Close;
+			else
+				return null;
 		}
 
 		private void LoadIndex()
@@ -178,7 +182,7 @@ namespace Fundamentalist.Trainer
 					return null;
 				}
 			}
-			List<PriceData> priceData = null;
+			SortedList<DateTime, PriceData> priceData = null;
 			if (EnablePriceData)
 			{
 				priceData = DataReader.GetPriceData(ticker);
@@ -232,6 +236,38 @@ namespace Fundamentalist.Trainer
 			return GetRelativeChange((float)previous.Value, (float)current.Value);
 		}
 
+		private float GetSimpleMovingAverage(int days, float[] prices)
+		{
+			float simpleMovingAverage = prices.TakeLast(days).Sum() / days;
+			return simpleMovingAverage;
+		}
+
+		private float GetExponentialMovingAverage(int days, float[] prices)
+		{
+			var exponentialMovingAverage = new float[prices.Length];
+			exponentialMovingAverage[days - 1] = GetSimpleMovingAverage(days, prices);
+			float weight = 2.0f / (days + 1);
+			for (int i = days; i < prices.Length; i++)
+				exponentialMovingAverage[i] = weight * prices[i] + (1 - weight) * exponentialMovingAverage[i - 1];
+			return exponentialMovingAverage[prices.Length - 1];
+		}
+
+		private float GetRelativeStrengthIndex(int days, float[] prices)
+		{
+			float gains = 0.0f;
+			float losses = 0.0f;
+			for (int i = prices.Length - days; i < prices.Length; i++)
+			{
+				float change = prices[i] / prices[i - 1] - 1.0f;
+				if (change >= 0)
+					gains += change;
+				else
+					losses -= change;
+			}
+			float relativeStrengthIndex = 100.0f - 100.0f / (1.0f + gains / losses);
+			return relativeStrengthIndex;
+		}
+
 		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
 		{
 			var financialStatements = tickerCacheEntry.FinancialStatements.Where(x => InRange(x.SourceDate, from, to) && x.SourceDate.Value >= _options.TrainingDate).ToList();
@@ -250,44 +286,37 @@ namespace Fundamentalist.Trainer
 					continue;
 				}
 
-				decimal? currentPrice = GetPrice(currentDate, priceData);
-				decimal? futurePrice = GetPrice(futureDate, priceData);
-				if (
-					!currentPrice.HasValue ||
-					!futurePrice.HasValue
-				)
+				decimal? currentPrice = GetOpenPrice(currentDate, priceData);
+				if (!currentPrice.HasValue)
 				{
 					Interlocked.Increment(ref _priceErrors);
 					continue;
 				}
 
-				int upDays = 0;
-				var performanceFeatures = new List<float>();
-				var history = priceData.Where(x => x.Date < currentDate).Reverse().Take(_options.HistoryDays).ToList();
-				if (history.Count != _options.HistoryDays)
+				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
+				if (pastPrices.Length < 200)
 				{
 					Interlocked.Increment(ref _priceErrors);
 					continue;
 				}
-				foreach (var sample in history)
+
+				var futurePrices = priceData.Values.Where(x => x.Date > currentDate).ToList();
+				if (futurePrices.Count < _options.ForecastDays)
 				{
-					double performance = GetRelativeChange(sample.Mean, currentPrice.Value);
-					performanceFeatures.Add((float)performance);
-					if (performance > 0)
-						upDays++;
+					Interlocked.Increment(ref _priceErrors);
+					continue;
 				}
-				performanceFeatures.Add((float)upDays);
+				float futurePrice = (float)futurePrices[_options.ForecastDays - 1].Close;
 
 				var financialFeatures = Features.GetFeatures(financialStatement);
 				var keyRatioFeatures = Features.GetFeatures(keyRatios);
-				float futurePerformance = GetRelativeChange(currentPrice, futurePrice);
-				float label = futurePerformance;
-				var features = financialFeatures.Concat(keyRatioFeatures).Concat(performanceFeatures);
-				var features = performanceFeatures;
+				var priceDataFeatures = GetPriceDataFeatures(currentPrice, pastPrices);
+				float label = futurePrice;
+				var features = financialFeatures.Concat(keyRatioFeatures).Concat(priceDataFeatures);
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
-					Label = futurePerformance,
+					Label = label,
 					// Metadata for backtesting, not used by training
 					Ticker = ticker,
 					Date = currentDate,
@@ -296,6 +325,35 @@ namespace Fundamentalist.Trainer
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
 			}
+		}
+
+		private List<float> GetPriceDataFeatures(decimal? currentPrice, float[] pastPrices)
+		{
+			float sma10 = GetSimpleMovingAverage(10, pastPrices);
+			float sma20 = GetSimpleMovingAverage(20, pastPrices);
+			float sma50 = GetSimpleMovingAverage(50, pastPrices);
+			float sma200 = GetSimpleMovingAverage(200, pastPrices);
+			float ema12 = GetExponentialMovingAverage(12, pastPrices);
+			float ema26 = GetExponentialMovingAverage(26, pastPrices);
+			float ema50 = GetExponentialMovingAverage(50, pastPrices);
+			float ema200 = GetExponentialMovingAverage(200, pastPrices);
+			float macd = ema12 - ema26;
+			float rsi = GetRelativeStrengthIndex(14, pastPrices);
+			var priceDataFeatures = new List<float>
+				{
+					(float)currentPrice.Value,
+					sma10,
+					sma20,
+					sma50,
+					sma200,
+					ema12,
+					ema26,
+					ema50,
+					ema200,
+					macd,
+					rsi
+				};
+			return priceDataFeatures;
 		}
 
 		private void TrainAndEvaluateModel(IAlgorithm algorithm, bool logging)

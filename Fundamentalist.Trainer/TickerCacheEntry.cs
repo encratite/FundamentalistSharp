@@ -8,6 +8,6 @@ namespace Fundamentalist.Trainer
 	{
 		public List<FinancialStatement> FinancialStatements { get; set; }
 		public KeyRatios KeyRatios { get; set; }
-		public List<PriceData> PriceData { get; set; }
+		public SortedList<DateTime, PriceData> PriceData { get; set; }
 	}
 }

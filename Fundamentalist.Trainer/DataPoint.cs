@@ -16,7 +16,7 @@ namespace Fundamentalist.Trainer
 		public DateTime Date { get; set; }
 
 		[NoColumn]
-		public List<PriceData> PriceData { get; set; }
+		public SortedList<DateTime, PriceData> PriceData { get; set; }
 
 		[NoColumn]
 		public float? Score { get; set; }

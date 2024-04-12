@@ -3,7 +3,6 @@ using Fundamentalist.Common.Json.AutoSuggest;
 using Fundamentalist.Common.Json.FinancialStatement;
 using Fundamentalist.Common.Json.KeyRatios;
 using System.Globalization;
-using System.Text.RegularExpressions;
 
 namespace Fundamentalist.Common
 {
@@ -81,7 +80,7 @@ namespace Fundamentalist.Common
 			return keyRatios;
 		}
 
-		public static List<PriceData> GetPriceData(CompanyTicker ticker)
+		public static SortedList<DateTime, PriceData> GetPriceData(CompanyTicker ticker)
 		{
 			string path = ticker.GetCsvPath(Configuration.PriceDataDirectory);
 			string priceDataCsv = ReadFile(path);
@@ -97,9 +96,9 @@ namespace Fundamentalist.Common
 			}
 		}
 
-		private static List<PriceData> ReadPriceData(CsvReader csvReader)
+		private static SortedList<DateTime, PriceData> ReadPriceData(CsvReader csvReader)
 		{
-			var priceData = new List<PriceData>();
+			var priceData = new SortedList<DateTime, PriceData>();
 			csvReader.Read();
 			csvReader.ReadHeader();
 			var dateTimeNullConverter = new NullConverter<DateTime>();
@@ -108,22 +107,28 @@ namespace Fundamentalist.Common
 			var getDecimal = (string field) => csvReader.GetField<decimal?>(field, decimalNullConverter);
 			while (csvReader.Read())
 			{
-				var priceDataRow = new PriceData
+				DateTime? date = csvReader.GetField<DateTime?>("Date", dateTimeNullConverter);
+				decimal? open = getDecimal("Open");
+				// decimal? high = getDecimal("High");
+				// decimal? low = getDecimal("Low");
+				decimal? close = getDecimal("Close");
+				// decimal? adjustedClose = getDecimal("Adj Close");
+				long? volume = csvReader.GetField<long?>("Volume", longNullConverter);
+				if (date.HasValue && open.HasValue && close.HasValue && volume.HasValue && open > 0 && close > 0)
 				{
-					Date = csvReader.GetField<DateTime?>("Date", dateTimeNullConverter),
-					Open = getDecimal("Open"),
-					High = getDecimal("High"),
-					Low = getDecimal("Low"),
-					Close = getDecimal("Close"),
-					AdjustedClose = getDecimal("Adj Close"),
-					Volume = csvReader.GetField<long?>("Volume", longNullConverter)
-				};
-				if (priceDataRow.HasInvalidValues())
-					continue;
-				if (priceDataRow.Date.HasValue && priceDataRow.Open.HasValue && priceDataRow.Open.Value > 0)
-					priceData.Add(priceDataRow);
+					var priceDataRow = new PriceData
+					{
+						Date = date.Value,
+						Open = open.Value,
+						// High = high.Value,
+						// Low = low.Value,
+						Close = close.Value,
+						// AdjustedClose = adjustedClose.Value,
+						Volume = volume.Value
+					};
+					priceData.Add(date.Value, priceDataRow);
+				}
 			}
-			priceData.Sort((x, y) => x.Date.Value.CompareTo(y.Date.Value));
 			return priceData;
 		}
 
