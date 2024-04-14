@@ -22,19 +22,7 @@ namespace Fundamentalist.Xblr.Json
 			if (Form == "10-K")
 				return $"{Value} ({Form} {End.Year})";
 			else if (Form == "10-Q")
-			{
-				var map = new Dictionary<int, string>
-				{
-					{ 2, "Q1" },
-					{ 5, "Q2" },
-					{ 8, "Q3" },
-					{ 11, "Q4" }
-				};
-				string description;
-				if (!map.TryGetValue(End.Month, out description))
-					description = "Q?";
-				return $"{Value} ({Form} {End.Year} {description})";
-			}
+				return $"{Value} ({Form} {End.Year} {FiscalPeriod})";
 			else
 				return $"{Value} ({Form} {End.ToShortDateString()})";
 		}

@@ -2,13 +2,15 @@
 using Fundamentalist.Xbrl.Json;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Reflection.Metadata.Ecma335;
 using System.Text.Json;
 
 namespace Fundamentalist.Xblr
 {
 	internal class XbrlParser
 	{
+		private const int MinimumFacts = 20;
+		private const int FeatureCount = 1000;
+
 		private Dictionary<string, int> _factFrequenies;
 		private ConcurrentBag<CompanyEarnings> _companyEarnings;
 		private int _progress;
@@ -63,7 +65,12 @@ namespace Fundamentalist.Xblr
 			var factFrequencies = new Dictionary<string, int>();
 			string path;
 			while (queue.TryDequeue(out path))
+			{
 				ProcessFile(path, factFrequencies);
+				Interlocked.Increment(ref _progress);
+				if (_progress > 0 && _progress % 100 == 0 || _progress == _total)
+					Console.WriteLine($"Processed {_progress} out of {_total} files ({(decimal)_progress / _total:P1}, {_progress / _stopwatch.Elapsed.TotalSeconds:F1}/s)");
+			}
 			lock (_factFrequenies)
 			{
 				foreach (var x in factFrequencies)
@@ -87,7 +94,7 @@ namespace Fundamentalist.Xblr
 			if (companyFacts.Facts == null)
 				return;
 			string ticker;
-			if (_tickers.TryGetValue(companyFacts.Cik, out ticker))
+			if (!_tickers.TryGetValue(companyFacts.Cik, out ticker))
 			{
 				// Console.WriteLine($"Unable to determine ticker of CIK {companyFacts.Cik}");
 				Interlocked.Increment(ref _tickerErrors);
@@ -108,18 +115,18 @@ namespace Fundamentalist.Xblr
 						factFrequencies[factName] = count;
 					foreach (var factValue in factValues)
 					{
+						if (factValue.Form != "10-Q")
+							continue;
 						var facts = earnings.Facts;
 						var key = factValue.Filed;
 						if (!facts.ContainsKey(key))
 							facts[key] = new Dictionary<string, FactValues>();
-						earnings.Facts[factValue.Filed][factName] = factValue;
+						facts[factValue.Filed][factName] = factValue;
 					}
 				}
 			}
-			_companyEarnings.Add(earnings);
-			Interlocked.Increment(ref _progress);
-			if (_progress > 0 && _progress % 100 == 0 || _progress == _total)
-				Console.WriteLine($"Processed {_progress} out of {_total} files ({(decimal)_progress / _total:P1}, {_progress / _stopwatch.Elapsed.TotalSeconds:F1}/s)");
+			if (earnings.Facts.Count >= MinimumFacts)
+				_companyEarnings.Add(earnings);
 		}
 	}
 }

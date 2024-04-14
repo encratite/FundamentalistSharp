@@ -11,5 +11,10 @@ namespace Fundamentalist.Xblr
 		{
 			Ticker = ticker;
 		}
+
+		public override string ToString()
+		{
+			return $"{Ticker} ({Facts.Count} filings)";
+		}
 	}
 }
