@@ -19,12 +19,14 @@ namespace Fundamentalist.Xblr
 		private Dictionary<int, string> _tickers;
 		private int _tickerErrors;
 
-		public void Run(string directory, string tickerPath, string frequencyPath)
+		public void Run(string xbrlDirectory, string tickerPath, string frequencyPath, string outputPath)
 		{
 			_stopwatch = new Stopwatch();
 			_stopwatch.Start();
+			Console.WriteLine($"Reading tickers from {tickerPath}");
 			ReadTickers(tickerPath);
-			var paths = Directory.GetFiles(directory, "*.json");
+			Console.WriteLine($"Processing XBRL files from {xbrlDirectory}");
+			var paths = Directory.GetFiles(xbrlDirectory, "*.json");
 			_factFrequenies = new Dictionary<string, int>();
 			_companyEarnings = new ConcurrentBag<CompanyEarnings>();
 			_progress = 0;
@@ -46,9 +48,60 @@ namespace Fundamentalist.Xblr
 				foreach (var x in frequencies)
 					writer.WriteLine($"{x.Key}: {x.Value}");
 			}
+			var featureIndices = new Dictionary<string, int>();
+			int index = 0;
+			var selectedFacts = frequencies.Take(FeatureCount).Select(x => x.Key).ToList();
+			foreach (string name in selectedFacts)
+			{
+				featureIndices[name] = index;
+				index++;
+			}
+			Console.WriteLine($"Writing output to {outputPath}");
+			using (var writer = new StreamWriter(outputPath, false))
+			{
+				var writeTokens = (List<string> tokens) =>
+				{
+					string line = string.Join(',', tokens);
+					writer.WriteLine(line);
+				};
+				var headerTokens = new List<string>
+				{
+					"Ticker",
+					"Date",
+				};
+				headerTokens.AddRange(selectedFacts);
+				writeTokens(headerTokens);
+				foreach (var earnings in _companyEarnings)
+				{
+					foreach (var x in earnings.Facts)
+					{
+						var date = x.Key;
+						var facts = x.Value;
+						var tokens = new List<string>
+						{
+							earnings.Ticker,
+							date.ToShortDateString(),
+						};
+						var features = new decimal[FeatureCount];
+						foreach (var fact in facts)
+						{
+							string name = fact.Key;
+							var factValue = fact.Value;
+							int factIndex;
+							if (!featureIndices.TryGetValue(name, out factIndex))
+								continue;
+							features[factIndex] = factValue.Value;
+						}
+						foreach (var feature in features)
+							tokens.Add(feature.ToString());
+						writeTokens(tokens);
+					}
+				}
+			}
 			_stopwatch.Stop();
 			Console.WriteLine($"Processed all files in {_stopwatch.Elapsed.TotalSeconds:F1} s and encountered {_factFrequenies.Count} facts in total");
 			Console.WriteLine($"Discarded {_tickerErrors} companies due to missing ticker data");
+			_companyEarnings = null;
 		}
 
 		private void ReadTickers(string tickerPath)

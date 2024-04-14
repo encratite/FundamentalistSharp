@@ -6,7 +6,7 @@ namespace Fundamentalist.Xblr
 	{
 		private static void Main(string[] arguments)
 		{
-			if (arguments.Length != 3)
+			if (arguments.Length != 4)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
@@ -17,8 +17,9 @@ namespace Fundamentalist.Xblr
 			string xbrlDirectory = arguments[0];
 			string tickerPath = arguments[1];
 			string frequencyPath = arguments[2];
+			string outputPath = arguments[3];
 			var parser = new XbrlParser();
-			parser.Run(xbrlDirectory, tickerPath, frequencyPath);
+			parser.Run(xbrlDirectory, tickerPath, frequencyPath, outputPath);
 		}
 	}
 }
