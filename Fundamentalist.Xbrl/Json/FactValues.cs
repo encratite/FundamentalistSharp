@@ -1,5 +1,4 @@
-﻿using NetJSON;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Fundamentalist.Xblr.Json
 {
@@ -7,16 +6,12 @@ namespace Fundamentalist.Xblr.Json
 	{
 		public DateTime End { get; set; }
 		[JsonPropertyName("val")]
-		[NetJSONProperty("val")]
 		public decimal Value { get; set; }
 		[JsonPropertyName("accn")]
-		[NetJSONProperty("accn")]
 		public string Account { get; set; }
 		[JsonPropertyName("fy")]
-		[NetJSONProperty("fy")]
 		public int? FiscalYear { get; set; }
 		[JsonPropertyName("fp")]
-		[NetJSONProperty("fp")]
 		public string FiscalPeriod { get; set; }
 		public string Form { get; set; }
 		public DateTime Filed { get; set; }

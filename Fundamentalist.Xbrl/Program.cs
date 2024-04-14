@@ -6,17 +6,18 @@ namespace Fundamentalist.Xblr
 	{
 		private static void Main(string[] arguments)
 		{
-			if (arguments.Length != 1)
+			if (arguments.Length != 2)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
-				Console.WriteLine($"{name.Name} <path to XBLR JSON files>");
+				Console.WriteLine($"{name.Name} <path to directory containing XBLR JSON files> <feature frequency output path>");
 				return;
 			}
-			string path = arguments[0];
+			string xbrlDirectory = arguments[0];
+			string frequencyPath = arguments[1];
 			var parser = new XbrlParser();
-			parser.Run(path);
+			parser.Run(xbrlDirectory, frequencyPath);
 		}
 	}
 }
