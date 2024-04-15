@@ -42,13 +42,28 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				new Sdca(),
+				// new Sdca(100, null, null),
+				// new Sdca(100, 1.0f, null),
+				// new Sdca(100, 1e2f, null),
+				// new Sdca(100, 1e3f, null),
+				// new Sdca(100, 1e4f, null),
+				// new Sdca(100, null, 1.0f),
+				// new Sdca(100, null, 1e2f),
+				// new Sdca(100, null, 1e3f),
+				// new Sdca(100, null, 1e4f),
+				// new Sdca(500, 1.0f, 1.0f),
+				// Best:
+				new Sdca(500, 1e2f, 1e2f),
+				// new Sdca(500, 1e2f, 1e3f),
+				// new Sdca(500, 1e2f, 1e4f),
+				/*
 				new OnlineGradientDescent(),
 				new LightGbmRegression(100, null, 1000),
 				new FastTree(20, 100),
 				new FastTreeTweedie(20, 100, 10),
 				new FastForest(20, 1000, 10),
 				new Gam(100, 255),
+				*/
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
@@ -56,18 +71,23 @@ namespace Fundamentalist.Trainer
 				string scoreName = $"{algorithm.Name}-{_options.ForecastDays}";
 				TrainAndEvaluateModel(algorithm);
 				// DumpScores(scoreName);
+				/*
 				backtest = new Backtest(_testData, _indexPriceData);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
+				*/
 			}
 
-			logPerformance("S&P 500", backtest.IndexPerformance);
-			Console.WriteLine("Options used:");
-			_options.Print();
-			Console.WriteLine("Performance summary:");
-			int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length + 1;
-			foreach (var entry in backtestLog)
-				Console.WriteLine($"  {(entry.Description + ":").PadRight(maxPadding)} {entry.Performance:#.00%}");
+			if (backtest != null)
+			{
+				logPerformance("S&P 500", backtest.IndexPerformance);
+				Console.WriteLine("Options used:");
+				_options.Print();
+				Console.WriteLine("Performance summary:");
+				int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length + 1;
+				foreach (var entry in backtestLog)
+					Console.WriteLine($"  {(entry.Description + ":").PadRight(maxPadding)} {entry.Performance:#.00%}");
+			}
 		}
 
 		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
@@ -300,14 +320,12 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
-			/*
 			var metrics = mlContext.Regression.Evaluate(predictions);
-			Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
+			// Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
 			Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
 			Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
 			Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
 			Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
-			*/
 		}
 
 		private void SetScores(IDataView predictions)

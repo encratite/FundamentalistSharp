@@ -8,7 +8,9 @@ namespace Fundamentalist.Trainer.Algorithm
 
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
-			IEstimator<ITransformer> estimator = mlContext.Regression.Trainers.OnlineGradientDescent(numberOfIterations: 100);
+			IEstimator<ITransformer> estimator =
+				mlContext.Transforms.NormalizeMinMax("Features")
+				.Append(mlContext.Regression.Trainers.OnlineGradientDescent(numberOfIterations: 100));
 			return estimator;
 		}
 	}
