@@ -22,10 +22,11 @@ namespace Fundamentalist.Trainer
 		private static void Run(string earningsPath, string priceDataDirectory)
 		{
 			var trainer = new Trainer();
-			for (int trainingYear = 2019; trainingYear <= 2022; trainingYear++)
+			for (int trainingYear = 2021; trainingYear <= 2021; trainingYear++)
 			{
 				var options = new TrainerOptions
 				{
+					Features = 100,
 					ForecastDays = 5,
 					TrainingDate = new DateTime(trainingYear, 1, 1),
 					TestDate = new DateTime(2023, 1, 1)

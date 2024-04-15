@@ -42,42 +42,13 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				// new Sdca(100, null, null),
-				// new Sdca(100, 1.0f, null),
-				// new Sdca(100, 1e2f, null),
-				// new Sdca(100, 1e3f, null),
-				// new Sdca(100, 1e4f, null),
-				// new Sdca(100, null, 1.0f),
-				// new Sdca(100, null, 1e2f),
-				// new Sdca(100, null, 1e3f),
-				// new Sdca(100, null, 1e4f),
-				// new Sdca(500, 1.0f, 1.0f),
-				// Best:
-				// new Sdca(500, 1e2f, 1e2f),
-				// new Sdca(500, 1e2f, 1e3f),
-				// new Sdca(500, 1e2f, 1e4f),
-				// new OnlineGradientDescent(10, 0.1f, 0f),
-				// new OnlineGradientDescent(100, 0.1f, 0f),
-				// new OnlineGradientDescent(1000, 0.1f, 0f),
-				// new OnlineGradientDescent(100, 1e-2f, 0f),
-				// new OnlineGradientDescent(100, 1e-3f, 0f),
-				// new OnlineGradientDescent(100, 0.1f, 0.1f),
-				// new OnlineGradientDescent(100, 0.1f, 0.2f),
-				// new OnlineGradientDescent(100, 0.1f, 0.3f),
-				// Best
+				new Sdca(500, 1e2f, 1e2f),
 				new OnlineGradientDescent(100, 0.1f, 0.4f),
-				// new OnlineGradientDescent(100, 0.1f, 0.49f),
-				// new OnlineGradientDescent(100, 0.01f, 0.49f),
-				// new OnlineGradientDescent(100, 0.001f, 0.49f),
-				// new OnlineGradientDescent(500, 0.01f, 0.4f),
-				// new OnlineGradientDescent(2000, 0.001f, 0.4f),
-				/*
 				new LightGbmRegression(100, null, 1000),
 				new FastTree(20, 100),
 				new FastTreeTweedie(20, 100, 10),
 				new FastForest(20, 1000, 10),
 				new Gam(100, 255),
-				*/
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
@@ -85,11 +56,9 @@ namespace Fundamentalist.Trainer
 				string scoreName = $"{algorithm.Name}-{_options.ForecastDays}";
 				TrainAndEvaluateModel(algorithm);
 				// DumpScores(scoreName);
-				/*
 				backtest = new Backtest(_testData, _indexPriceData);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
-				*/
 			}
 
 			if (backtest != null)
@@ -167,7 +136,7 @@ namespace Fundamentalist.Trainer
 
 		private void LoadEarnings()
 		{
-			var earningLines = DataReader.GetEarnings(_earningsPath);
+			var earningLines = DataReader.GetEarnings(_earningsPath, _options.Features);
 			foreach (var x in earningLines)
 			{
 				string ticker = x.Ticker;
@@ -334,12 +303,14 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
+			/*
 			var metrics = mlContext.Regression.Evaluate(predictions);
 			// Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
 			Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
 			Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
 			Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
 			Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
+			*/
 		}
 
 		private void SetScores(IDataView predictions)
