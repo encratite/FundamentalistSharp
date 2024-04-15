@@ -6,8 +6,6 @@ namespace Fundamentalist.Trainer.Algorithm
 	{
 		public string Name => "Stochastic Dual Coordinated Ascent";
 
-		public bool IsStochastic => true;
-
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
 			IEstimator<ITransformer> estimator =

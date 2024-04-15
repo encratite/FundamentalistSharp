@@ -6,8 +6,6 @@ namespace Fundamentalist.Trainer.Algorithm
 	{
 		public string Name => "Online Gradient Descent";
 
-		public bool IsStochastic => false;
-
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
 			IEstimator<ITransformer> estimator =

@@ -15,18 +15,17 @@ namespace Fundamentalist.Scraper
 				DownloadPriceData(ticker, directory);
 		}
 
-		private string DownloadFile(string uri, string path, bool downloadOnly = false)
+		private string DownloadFile(string uri, string path, bool downloadOnly = false, int? sleepMilliseconds = null)
 		{
 			string content = null;
-			string fullPath = Path.Combine(Configuration.DataDirectory, path);
-			if (File.Exists(fullPath))
+			if (File.Exists(path))
 			{
 				if (downloadOnly)
-					Console.WriteLine($"\"{fullPath}\" had already been downloaded");
+					Console.WriteLine($"\"{path}\" had already been downloaded");
 				else
 				{
-					content = File.ReadAllText(fullPath);
-					Console.WriteLine($"Retrieved \"{fullPath}\" from disk");
+					content = File.ReadAllText(path);
+					Console.WriteLine($"Retrieved \"{path}\" from disk");
 				}
 			}
 			else
@@ -34,28 +33,30 @@ namespace Fundamentalist.Scraper
 				try
 				{
 					content = _httpClient.GetStringAsync(uri).Result;
-					string? directoryPath = Path.GetDirectoryName(fullPath);
+					string? directoryPath = Path.GetDirectoryName(path);
 					if (directoryPath != null)
 						Directory.CreateDirectory(directoryPath);
-					File.WriteAllText(fullPath, content);
-					Console.WriteLine($"Downloaded \"{fullPath}\"");
+					File.WriteAllText(path, content);
+					Console.WriteLine($"Downloaded \"{path}\"");
 				}
 				catch (AggregateException exception)
 				{
-					string message = $"Failed to download \"{fullPath}\"";
+					string message = $"Failed to download \"{path}\"";
 					var httpException = exception.InnerException as HttpRequestException;
 					if (httpException != null)
 						Utility.WriteError($"{message} ({httpException.StatusCode})");
 					else
 						Utility.WriteError($"{message} ({exception.InnerException})");
 				}
+				if (sleepMilliseconds.HasValue)
+					Thread.Sleep(sleepMilliseconds.Value);
 			}
 			return content;
 		}
 
-		private void DownloadOnly(string uri, string path)
+		private void DownloadOnly(string uri, string path, int? sleepMilliseconds = null)
 		{
-			DownloadFile(uri, path, true);
+			DownloadFile(uri, path, true, sleepMilliseconds);
 		}
 
 		private void DownloadPriceData(string ticker, string directory)
@@ -63,7 +64,7 @@ namespace Fundamentalist.Scraper
 			string encodedTicker = HttpUtility.UrlEncode(ticker);
 			string uri = $"https://query1.finance.yahoo.com/v7/finance/download/{encodedTicker}?period1=0&period2=2000000000&interval=1d&events=history";
 			string path = Path.Combine(directory, $"{ticker}.csv");
-			DownloadOnly(uri, path);
+			DownloadOnly(uri, path, 2000);
 		}
 	}
 }

@@ -6,8 +6,6 @@ namespace Fundamentalist.Trainer.Algorithm
 	{
 		public string Name => "Generalized Additive Model";
 
-		public bool IsStochastic => false;
-
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
 			IEstimator<ITransformer> estimator = mlContext.Regression.Trainers.Gam(numberOfIterations: 100);

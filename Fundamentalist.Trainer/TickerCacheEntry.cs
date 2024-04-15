@@ -1,13 +1,10 @@
 ﻿using Fundamentalist.Common;
-using Fundamentalist.Common.Json.FinancialStatement;
-using Fundamentalist.Common.Json.KeyRatios;
 
 namespace Fundamentalist.Trainer
 {
 	internal class TickerCacheEntry
 	{
-		public List<FinancialStatement> FinancialStatements { get; set; }
-		public KeyRatios KeyRatios { get; set; }
-		public SortedList<DateTime, PriceData> PriceData { get; set; }
+		public Dictionary<DateTime, float[]> Earnings { get; set; } = new Dictionary<DateTime, float[]>();
+		public SortedList<DateTime, PriceData> PriceData { get; set; } = new SortedList<DateTime, PriceData>();
 	}
 }

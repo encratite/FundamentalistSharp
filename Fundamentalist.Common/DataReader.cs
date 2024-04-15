@@ -9,9 +9,9 @@ namespace Fundamentalist.Common
 
 		public static List<string> GetTickers(string path)
 		{
-			using (var stringReader = new StreamReader(path))
+			using (var stream = new StreamReader(path))
 			{
-				using (var csvReader = new CsvReader(stringReader, CultureInfo.InvariantCulture))
+				using (var csvReader = new CsvReader(stream, CultureInfo.InvariantCulture))
 				{
 					var set = new HashSet<string>();
 					csvReader.Read();
@@ -27,15 +27,36 @@ namespace Fundamentalist.Common
 			}
 		}
 
-		public static SortedList<DateTime, PriceData> GetPriceData(CompanyTicker ticker)
+		public static void ReadEarnings(string csvPath, Action<string, DateTime, float[]> handleLine)
 		{
-			string path = ticker.GetCsvPath(Configuration.PriceDataDirectory);
-			string priceDataCsv = ReadFile(path);
-			if (priceDataCsv == null)
-				return null;
-			using (var stringReader = new StringReader(priceDataCsv))
+			using (var stream = new StreamReader(csvPath))
 			{
-				using (var csvReader = new CsvReader(stringReader, CultureInfo.InvariantCulture))
+				using (var csvReader = new CsvReader(stream, CultureInfo.InvariantCulture))
+				{
+					csvReader.Read();
+					csvReader.ReadHeader();
+					while (csvReader.Read())
+					{
+						string ticker = csvReader.GetField(0);
+						DateTime date = csvReader.GetField<DateTime>(1);
+						int offset = 2;
+						float[] features = new float[csvReader.ColumnCount - offset];
+						for (int i = 0; i < features.Length; i++)
+							features[i] = csvReader.GetField<float>(i + offset);
+						handleLine(ticker, date, features);
+					}
+				}
+			}
+		}
+
+		public static SortedList<DateTime, PriceData> GetPriceData(string ticker, string directory)
+		{
+			string path = Path.Combine(directory, $"{ticker}.csv");
+			if (!File.Exists(path))
+				return null;
+			using (var stream = new StreamReader(path))
+			{
+				using (var csvReader = new CsvReader(stream, CultureInfo.InvariantCulture))
 				{
 					var priceData = ReadPriceData(csvReader);
 					return priceData;
@@ -77,14 +98,6 @@ namespace Fundamentalist.Common
 				}
 			}
 			return priceData;
-		}
-
-		private static string ReadFile(string path)
-		{
-			string fullPath = Path.Combine(Configuration.DataDirectory, path);
-			if (!File.Exists(fullPath))
-				return null;
-			return File.ReadAllText(fullPath);
 		}
 	}
 }

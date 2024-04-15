@@ -6,8 +6,6 @@ namespace Fundamentalist.Trainer.Algorithm
 	{
 		public string Name => "Fast Forest";
 
-		public bool IsStochastic => false;
-
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
 			IEstimator<ITransformer> estimator = mlContext.Regression.Trainers.FastForest();
