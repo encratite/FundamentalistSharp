@@ -9,17 +9,17 @@ namespace Fundamentalist.Trainer
 {
 	internal class Trainer
 	{
+		private const int PriceDataMinimum = 180;
+
 		private TrainerOptions _options;
 		private string _earningsPath;
 		private string _priceDataDirectory;
 
 		private SortedList<DateTime, PriceData> _indexPriceData = null;
-		private ConcurrentDictionary<string, TickerCacheEntry> _tickerCache = new ConcurrentDictionary<string, TickerCacheEntry>();
+		private Dictionary<string, TickerCacheEntry> _tickerCache = new Dictionary<string, TickerCacheEntry>();
 
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
-
-		private BlockingCollection<string> _tickerQueue;
 
 		public void Run(TrainerOptions options, string earningsPath, string priceDataDirectory)
 		{
@@ -104,21 +104,24 @@ namespace Fundamentalist.Trainer
 			stopwatch.Start();
 			_trainingData = new List<DataPoint>();
 			_testData = new List<DataPoint>();
-			int tickersProcessed = 0;
+			int badTickers = 0;
 			int goodTickers = 0;
 			Console.WriteLine("Loading datasets");
-			_tickerQueue = new BlockingCollection<string>();
-			var threads = new List<Thread>();
-			for (int i = 0; i < 4; i++)
-			{
-				var thread = new Thread(RunTickerThread);
-				thread.Start();
-				threads.Add(thread);
-			}
 			DataReader.ReadEarnings(_earningsPath, OnEarnings);
-			_tickerQueue.CompleteAdding();
-			foreach (var thread in threads)
-				thread.Join();
+			foreach (var x in _tickerCache.ToList())
+			{
+				string ticker = x.Key;
+				var cacheEntry = x.Value;
+				var priceData = DataReader.GetPriceData(ticker, _priceDataDirectory);
+				if (priceData == null || priceData.Count < PriceDataMinimum)
+				{
+					_tickerCache.Remove(ticker);
+					badTickers++;
+					continue;
+				}
+				cacheEntry.PriceData = priceData;
+				goodTickers++;
+			}
 			stopwatch.Stop();
 			Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s, generating data points");
 			stopwatch.Restart();
@@ -130,6 +133,7 @@ namespace Fundamentalist.Trainer
 				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData);
 			});
 			stopwatch.Stop();
+			Console.WriteLine($"Removed {badTickers} tickers ({(decimal)badTickers / (badTickers + goodTickers):P1}) due to insufficient price data");
 			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
@@ -140,27 +144,8 @@ namespace Fundamentalist.Trainer
 			{
 				cacheEntry = new TickerCacheEntry();
 				_tickerCache[ticker] = cacheEntry;
-				_tickerQueue.Add(ticker);
 			}
 			cacheEntry.Earnings.Add(date, features);
-		}
-
-		private void RunTickerThread()
-		{
-			try
-			{
-				while (!_tickerQueue.IsCompleted)
-				{
-					string ticker = _tickerQueue.Take();
-					var priceData = DataReader.GetPriceData(ticker, _priceDataDirectory);
-					if (priceData == null)
-						continue;
-					_tickerCache[ticker].PriceData = priceData;
-				}
-			}
-			catch (InvalidOperationException)
-			{
-			}
 		}
 
 		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
