@@ -9,7 +9,7 @@ namespace Fundamentalist.Trainer
 {
 	internal class Trainer
 	{
-		private const int PriceDataMinimum = 180;
+		private const int PriceDataMinimum = 200;
 
 		private TrainerOptions _options;
 		private string _earningsPath;
@@ -43,12 +43,100 @@ namespace Fundamentalist.Trainer
 			var algorithms = new IAlgorithm[]
 			{
 				new Sdca(),
+
 				new OnlineGradientDescent(),
-				new LightGbmRegression(),
-				new FastTree(),
-				new FastTreeTweedie(),
-				new FastForest(),
-				new Gam(),
+
+				// new LightGbmRegression(20, 1),
+				// new LightGbmRegression(20, 100),
+				// new LightGbmRegression(50, 100),
+				// new LightGbmRegression(50, 200),
+				// new LightGbmRegression(200, 100),
+				// new LightGbmRegression(200, 200),
+				// new LightGbmRegression(200, 500),
+				// new LightGbmRegression(null, 100),
+				// Best:
+				new LightGbmRegression(null, 100, null, 1000),
+				// new LightGbmRegression(null, 100, 1e-4, 1000),
+				// new LightGbmRegression(null, 100, 1e-5, 1000),
+
+				// new FastTree(null, 20, 100),
+				// new FastTree(20, 20, 100),
+				// new FastTree(50, 15, 80),
+				// Best, but most of them are similar:
+				new FastTree(50, 10, 50),
+				// new FastTree(50, 5, 20),
+				// new FastTree(100, 20, 100),
+				// new FastTree(100, 50, 100),
+				// new FastTree(100, 20, 500),
+				// new FastTree(100, 50, 1000),
+				// new FastTree(250, 20, 100),
+				// new FastTree(null, 50, 100),
+				// new FastTree(null, 20, 1000),
+
+				// Best out of all:
+				new FastTreeTweedie(null, 20, 100, 10),
+				// new FastTreeTweedie(null, 20, 75, 10),
+				// new FastTreeTweedie(null, 15, 100, 10),
+				// new FastTreeTweedie(null, 20, 100, 15),
+				// new FastTreeTweedie(null, 20, 100, 5),
+				// new FastTreeTweedie(null, 20, 100, 50),
+				// More leaves/trees make it worse:
+				// new FastTreeTweedie(null, 50, 100, 10),
+				// new FastTreeTweedie(null, 20, 1000, 10),
+				// PCA seems to make it worse:
+				// new FastTreeTweedie(20, 20, 100, 10),
+				// new FastTreeTweedie(50, 15, 80, 10),
+				// new FastTreeTweedie(50, 10, 50, 10),
+				// new FastTreeTweedie(50, 5, 20, 10),
+				// new FastTreeTweedie(100, 20, 100, 10),
+				// new FastTreeTweedie(100, 50, 100, 10),
+				// new FastTreeTweedie(100, 20, 500, 10),
+				// new FastTreeTweedie(100, 50, 1000, 10),
+				// new FastTreeTweedie(250, 20, 100, 10),
+
+				// new FastForest(null, 20, 100, 10),
+				// new FastForest(null, 20, 75, 10),
+				// new FastForest(null, 15, 100, 10),
+				// new FastForest(null, 20, 100, 15),
+				// new FastForest(null, 20, 100, 5),
+				// new FastForest(null, 20, 100, 50),
+				// new FastForest(null, 50, 100, 10),
+				// Best:
+				new FastForest(null, 20, 1000, 10),
+				// PCA seems to completely break, returns all zeroes
+				// new FastForest(20, 20, 100, 10),
+				// new FastForest(50, 15, 80, 10),
+				// new FastForest(50, 10, 50, 10),
+				// new FastForest(50, 5, 20, 10),
+				// new FastForest(100, 20, 100, 10),
+				// new FastForest(100, 50, 100, 10),
+				// new FastForest(100, 20, 500, 10),
+				// new FastForest(100, 50, 1000, 10),
+				// new FastForest(250, 20, 100, 10),
+
+				// new Gam(null, 9500, 255),
+				// new Gam(null, 5000, 255),
+				// new Gam(null, 100, 255),
+				// new Gam(null, 50, 255),
+				// new Gam(null, 25, 255),
+				// new Gam(null, 150, 255),
+				// new Gam(null, 100, 300),
+				// new Gam(null, 100, 500),
+				// new Gam(null, 100, 100),
+				// These took too long, didn't even finish:
+				// new Gam(null, 15000, 255),
+				// new Gam(null, 9500, 150),
+				// new Gam(null, 9500, 50),
+				// new Gam(null, 9500, 500),
+				// new Gam(20, 100, 255),
+				// Best:
+				new Gam(100, 100, 255),
+				// new Gam(100, 150, 255),
+				// new Gam(100, 200, 255),
+				// new Gam(100, 100, 1000),
+				// new Gam(100, 150, 1000),
+				// new Gam(100, 200, 1000),
+				// new Gam(250, 100, 255),
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
@@ -63,6 +151,7 @@ namespace Fundamentalist.Trainer
 				*/
 			}
 
+			/*
 			logPerformance("S&P 500", backtest.IndexPerformance);
 			Console.WriteLine("Options used:");
 			_options.Print();
@@ -70,9 +159,7 @@ namespace Fundamentalist.Trainer
 			int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length + 1;
 			foreach (var entry in backtestLog)
 				Console.WriteLine($"  {(entry.Description + ":").PadRight(maxPadding)} {entry.Performance:#.00%}");
-
-			_trainingData = null;
-			_testData = null;
+			*/
 		}
 
 		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
@@ -227,7 +314,7 @@ namespace Fundamentalist.Trainer
 					continue;
 
 				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
-				if (pastPrices.Length < 200)
+				if (pastPrices.Length < PriceDataMinimum)
 					continue;
 
 				var futurePrices = priceData.Values.Where(x => x.Date > currentDate).ToList();

@@ -9,7 +9,7 @@ namespace Fundamentalist.Trainer.Algorithm
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
 			IEstimator<ITransformer> estimator =
-				mlContext.Transforms.NormalizeMinMax("Features")
+				mlContext.Transforms.ProjectToPrincipalComponents("Features", rank: 20)
 				.Append(mlContext.Regression.Trainers.Sdca(maximumNumberOfIterations: 100));
 			return estimator;
 		}
