@@ -1,5 +1,4 @@
-﻿using CsvHelper;
-using System.Globalization;
+﻿using System.Collections.Concurrent;
 
 namespace Fundamentalist.Common
 {
@@ -7,97 +6,60 @@ namespace Fundamentalist.Common
 	{
 		public const string IndexTicker = "^GSPC";
 
-		public static List<string> GetTickers(string path)
+		public static List<string> GetTickers(string csvPath)
 		{
-			using (var stream = new StreamReader(path))
+			var dictionary = new ConcurrentDictionary<string, bool>();
+			var lines = File.ReadAllLines(csvPath);
+			Parallel.ForEach(lines.Skip(1), line =>
 			{
-				using (var csvReader = new CsvReader(stream, CultureInfo.InvariantCulture))
-				{
-					var set = new HashSet<string>();
-					csvReader.Read();
-					csvReader.ReadHeader();
-					while (csvReader.Read())
-					{
-						string ticker = csvReader.GetField(0);
-						set.Add(ticker);
-					}
-					var output = new List<string>(set.AsEnumerable().Order());
-					return output;
-				}
-			}
+				var tokens = line.Split(',');
+				string ticker = tokens[0];
+				dictionary[ticker] = true;
+			});
+			var output = dictionary.Keys.Order().ToList();
+			return output;
 		}
 
-		public static void ReadEarnings(string csvPath, Action<string, DateTime, float[]> handleLine)
+		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath)
 		{
-			using (var stream = new StreamReader(csvPath))
+			var output = new ConcurrentBag<EarningsLine>();
+			var lines = File.ReadAllLines(csvPath);
+			Parallel.ForEach(lines.Skip(1), line =>
 			{
-				using (var csvReader = new CsvReader(stream, CultureInfo.InvariantCulture))
+				var tokens = line.Split(',');
+				var earningsLine = new EarningsLine()
 				{
-					csvReader.Read();
-					csvReader.ReadHeader();
-					while (csvReader.Read())
-					{
-						string ticker = csvReader.GetField(0);
-						DateTime date = csvReader.GetField<DateTime>(1);
-						int offset = 2;
-						float[] features = new float[csvReader.ColumnCount - offset];
-						for (int i = 0; i < features.Length; i++)
-							features[i] = csvReader.GetField<float>(i + offset);
-						handleLine(ticker, date, features);
-					}
-				}
-			}
+					Ticker = tokens[0],
+					Date = DateTime.Parse(tokens[1]),
+					Features = tokens.Skip(2).Select(x => float.Parse(x)).ToArray()
+				};
+				output.Add(earningsLine);
+			});
+			return output;
 		}
 
 		public static SortedList<DateTime, PriceData> GetPriceData(string ticker, string directory)
 		{
-			string path = Path.Combine(directory, $"{ticker}.csv");
-			if (!File.Exists(path))
+			string csvPath = Path.Combine(directory, $"{ticker}.csv");
+			if (!File.Exists(csvPath))
 				return null;
-			using (var stream = new StreamReader(path))
+			var lines = File.ReadAllLines(csvPath);
+			var output = new SortedList<DateTime, PriceData>();
+			foreach (string line in lines.Skip(1))
 			{
-				using (var csvReader = new CsvReader(stream, CultureInfo.InvariantCulture))
+				var tokens = line.Split(',');
+				if (tokens.Any(x => x == "null"))
+					continue;
+				var priceData = new PriceData
 				{
-					var priceData = ReadPriceData(csvReader);
-					return priceData;
-				}
+					Date = DateTime.Parse(tokens[0]),
+					Open = decimal.Parse(tokens[1]),
+					Close = decimal.Parse(tokens[4]),
+					Volume = long.Parse(tokens[6]),
+				};
+				output.Add(priceData.Date, priceData);
 			}
-		}
-
-		private static SortedList<DateTime, PriceData> ReadPriceData(CsvReader csvReader)
-		{
-			var priceData = new SortedList<DateTime, PriceData>();
-			csvReader.Read();
-			csvReader.ReadHeader();
-			var dateTimeNullConverter = new NullConverter<DateTime>();
-			var decimalNullConverter = new NullConverter<decimal>();
-			var longNullConverter = new NullConverter<long>();
-			var getDecimal = (string field) => csvReader.GetField<decimal?>(field, decimalNullConverter);
-			while (csvReader.Read())
-			{
-				DateTime? date = csvReader.GetField<DateTime?>("Date", dateTimeNullConverter);
-				decimal? open = getDecimal("Open");
-				// decimal? high = getDecimal("High");
-				// decimal? low = getDecimal("Low");
-				decimal? close = getDecimal("Close");
-				// decimal? adjustedClose = getDecimal("Adj Close");
-				long? volume = csvReader.GetField<long?>("Volume", longNullConverter);
-				if (date.HasValue && open.HasValue && close.HasValue && volume.HasValue && open > 0 && close > 0)
-				{
-					var priceDataRow = new PriceData
-					{
-						Date = date.Value,
-						Open = open.Value,
-						// High = high.Value,
-						// Low = low.Value,
-						Close = close.Value,
-						// AdjustedClose = adjustedClose.Value,
-						Volume = volume.Value
-					};
-					priceData.Add(date.Value, priceDataRow);
-				}
-			}
-			return priceData;
+			return output;
 		}
 	}
 }

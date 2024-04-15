@@ -2,8 +2,8 @@
 using Fundamentalist.Trainer.Algorithm;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using System.Collections.Concurrent;
 using System.Diagnostics;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Fundamentalist.Trainer
 {
@@ -20,6 +20,9 @@ namespace Fundamentalist.Trainer
 
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
+
+		private int _badTickers;
+		private int _goodTickers;
 
 		public void Run(TrainerOptions options, string earningsPath, string priceDataDirectory)
 		{
@@ -104,26 +107,16 @@ namespace Fundamentalist.Trainer
 			stopwatch.Start();
 			_trainingData = new List<DataPoint>();
 			_testData = new List<DataPoint>();
-			int badTickers = 0;
-			int goodTickers = 0;
-			Console.WriteLine("Loading datasets");
-			DataReader.ReadEarnings(_earningsPath, OnEarnings);
-			foreach (var x in _tickerCache.ToList())
-			{
-				string ticker = x.Key;
-				var cacheEntry = x.Value;
-				var priceData = DataReader.GetPriceData(ticker, _priceDataDirectory);
-				if (priceData == null || priceData.Count < PriceDataMinimum)
-				{
-					_tickerCache.Remove(ticker);
-					badTickers++;
-					continue;
-				}
-				cacheEntry.PriceData = priceData;
-				goodTickers++;
-			}
+			_badTickers = 0;
+			_goodTickers = 0;
+			Console.WriteLine("Loading earnings");
+			LoadEarnings();
 			stopwatch.Stop();
-			Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s, generating data points");
+			Console.WriteLine($"Loaded earnings in {stopwatch.Elapsed.TotalSeconds:F1} s, loading price data");
+			stopwatch.Restart();
+			LoadPriceData();
+			stopwatch.Stop();
+			Console.WriteLine($"Loaded price data in {stopwatch.Elapsed.TotalSeconds:F1} s, generating data points");
 			stopwatch.Restart();
 			Parallel.ForEach(_tickerCache, x =>
 			{
@@ -133,19 +126,46 @@ namespace Fundamentalist.Trainer
 				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData);
 			});
 			stopwatch.Stop();
-			Console.WriteLine($"Removed {badTickers} tickers ({(decimal)badTickers / (badTickers + goodTickers):P1}) due to insufficient price data");
+			Console.WriteLine($"Removed {_badTickers} tickers ({(decimal)_badTickers / (_badTickers + _goodTickers):P1}) due to insufficient price data");
 			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
-		private void OnEarnings(string ticker, DateTime date, float[] features)
+		private void LoadEarnings()
 		{
-			TickerCacheEntry cacheEntry;
-			if (!_tickerCache.TryGetValue(ticker, out cacheEntry))
+			var earningLines = DataReader.GetEarnings(_earningsPath);
+			foreach (var x in earningLines)
 			{
-				cacheEntry = new TickerCacheEntry();
-				_tickerCache[ticker] = cacheEntry;
+				string ticker = x.Ticker;
+				TickerCacheEntry cacheEntry;
+				if (!_tickerCache.TryGetValue(ticker, out cacheEntry))
+				{
+					cacheEntry = new TickerCacheEntry();
+					_tickerCache[ticker] = cacheEntry;
+				}
+				cacheEntry.Earnings.Add(x.Date, x.Features);
 			}
-			cacheEntry.Earnings.Add(date, features);
+		}
+
+		private void LoadPriceData()
+		{
+			var options = new ParallelOptions
+			{
+				MaxDegreeOfParallelism = 4
+			};
+			Parallel.ForEach(_tickerCache.ToList(), options, x =>
+			{
+				string ticker = x.Key;
+				var cacheEntry = x.Value;
+				var priceData = DataReader.GetPriceData(ticker, _priceDataDirectory);
+				if (priceData == null || priceData.Count < PriceDataMinimum)
+				{
+					_tickerCache.Remove(ticker);
+					Interlocked.Increment(ref _badTickers);
+					return;
+				}
+				cacheEntry.PriceData = priceData;
+				Interlocked.Increment(ref _goodTickers);
+			});
 		}
 
 		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
