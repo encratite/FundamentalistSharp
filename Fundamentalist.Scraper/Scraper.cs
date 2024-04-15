@@ -7,22 +7,12 @@ namespace Fundamentalist.Scraper
 	{
 		private HttpClient _httpClient = new HttpClient();
 
-		public void Run()
+		public void Run(string csvPath, string directory)
 		{
-			DownloadIndex();
-			var tickers = GetTickers();
-			foreach (var ticker in tickers)
-			{
-				string secId = GetSecId(ticker);
-				if (secId != null)
-				{
-					DownloadFinancialStatements(secId, ticker);
-					DownloadKeyRatios(secId, ticker);
-					DownloadPriceData(ticker);
-				}
-				else
-					Utility.WriteError($"Unable to determine sec ID for \"{ticker}\"");
-			}
+			DownloadPriceData(DataReader.IndexTicker, directory);
+			var tickers = DataReader.GetTickers(csvPath);
+			foreach (string ticker in tickers)
+				DownloadPriceData(ticker, directory);
 		}
 
 		private string DownloadFile(string uri, string path, bool downloadOnly = false)
@@ -68,49 +58,11 @@ namespace Fundamentalist.Scraper
 			DownloadFile(uri, path, true);
 		}
 
-		private void DownloadIndex()
+		private void DownloadPriceData(string ticker, string directory)
 		{
-			var indexTicker = CompanyTicker.GetIndexTicker();
-			DownloadPriceData(indexTicker);
-		}
-
-		private List<CompanyTicker> GetTickers()
-		{
-			const string WilshireStocksUri = "https://raw.githubusercontent.com/derekbanas/Python4Finance/main/Wilshire-5000-Stocks.csv";
-			string httpContent = DownloadFile(WilshireStocksUri, Configuration.StocksPath);
-			return DataReader.GetTickers(httpContent);
-		}
-
-		private string GetSecId(CompanyTicker ticker)
-		{
-			string encodedCompany = HttpUtility.UrlEncode(ticker.Company);
-			string uri = $"https://services.bingapis.com/contentservices-finance.csautosuggest/api/v1/Query?query={encodedCompany}&market=en-us&count=250";
-			string path = ticker.GetJsonPath(Configuration.SecIdDirectory);
-			string httpContent = DownloadFile(uri, path);
-			return DataReader.GetSecId(ticker, httpContent);
-		}
-
-		private void DownloadFinancialStatements(string secId, CompanyTicker ticker)
-		{
-			string encodedSecId = HttpUtility.UrlEncode(secId);
-			string uri = $"https://assets.msn.com/service/Finance/Equities/financialstatements?apikey=0QfOX3Vn51YCzitbLaRkTTBadtWpgTN8NZLW0C1SEM&ocid=finance-utils-peregrine&cm=en-us&it=web&scn=ANON&$filter=_p%20eq%20%27{encodedSecId}%27&$top=200&wrapodata=false";
-			string path = ticker.GetJsonPath(Configuration.FinancialStatementsDirectory);
-			DownloadOnly(uri, path);
-		}
-
-		private void DownloadKeyRatios(string secId, CompanyTicker ticker)
-		{
-			string encodedSecId = HttpUtility.UrlEncode(secId);
-			string uri = $"https://services.bingapis.com/contentservices-finance.financedataservice/api/v1/KeyRatios?stockId={encodedSecId}";
-			string path = ticker.GetJsonPath(Configuration.KeyRatiosDirectory);
-			DownloadOnly(uri, path);
-		}
-
-		private void DownloadPriceData(CompanyTicker ticker)
-		{
-			string encodedTicker = HttpUtility.UrlEncode(ticker.Ticker);
+			string encodedTicker = HttpUtility.UrlEncode(ticker);
 			string uri = $"https://query1.finance.yahoo.com/v7/finance/download/{encodedTicker}?period1=0&period2=2000000000&interval=1d&events=history";
-			string path = ticker.GetCsvPath(Configuration.PriceDataDirectory);
+			string path = Path.Combine(directory, $"{ticker}.csv");
 			DownloadOnly(uri, path);
 		}
 	}
