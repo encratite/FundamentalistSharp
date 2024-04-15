@@ -21,8 +21,8 @@ namespace Fundamentalist.Trainer
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
 
-		private int _badTickers;
-		private int _goodTickers;
+		private int _badTickers = 0;
+		private int _goodTickers = 0;
 
 		public void Run(TrainerOptions options, string earningsPath, string priceDataDirectory)
 		{
@@ -59,11 +59,12 @@ namespace Fundamentalist.Trainer
 				// new LightGbmRegression(null, 100, 1e-4, 1000),
 				// new LightGbmRegression(null, 100, 1e-5, 1000),
 
-				// new FastTree(null, 20, 100),
+				// PCA breaks it?
+				new FastTree(null, 20, 100),
 				// new FastTree(20, 20, 100),
 				// new FastTree(50, 15, 80),
 				// Best, but most of them are similar:
-				new FastTree(50, 10, 50),
+				// new FastTree(50, 10, 50),
 				// new FastTree(50, 5, 20),
 				// new FastTree(100, 20, 100),
 				// new FastTree(100, 50, 100),
@@ -114,6 +115,8 @@ namespace Fundamentalist.Trainer
 				// new FastForest(100, 50, 1000, 10),
 				// new FastForest(250, 20, 100, 10),
 
+				// More PCA breakage
+				new Gam(null, 100, 255),
 				// new Gam(null, 9500, 255),
 				// new Gam(null, 5000, 255),
 				// new Gam(null, 100, 255),
@@ -130,7 +133,7 @@ namespace Fundamentalist.Trainer
 				// new Gam(null, 9500, 500),
 				// new Gam(20, 100, 255),
 				// Best:
-				new Gam(100, 100, 255),
+				// new Gam(100, 100, 255),
 				// new Gam(100, 150, 255),
 				// new Gam(100, 200, 255),
 				// new Gam(100, 100, 1000),
@@ -144,14 +147,11 @@ namespace Fundamentalist.Trainer
 				string scoreName = $"{algorithm.Name}-{_options.ForecastDays}";
 				TrainAndEvaluateModel(algorithm);
 				// DumpScores(scoreName);
-				/*
 				backtest = new Backtest(_testData, _indexPriceData);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
-				*/
 			}
 
-			/*
 			logPerformance("S&P 500", backtest.IndexPerformance);
 			Console.WriteLine("Options used:");
 			_options.Print();
@@ -159,7 +159,6 @@ namespace Fundamentalist.Trainer
 			int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length + 1;
 			foreach (var entry in backtestLog)
 				Console.WriteLine($"  {(entry.Description + ":").PadRight(maxPadding)} {entry.Performance:#.00%}");
-			*/
 		}
 
 		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
@@ -194,16 +193,19 @@ namespace Fundamentalist.Trainer
 			stopwatch.Start();
 			_trainingData = new List<DataPoint>();
 			_testData = new List<DataPoint>();
-			_badTickers = 0;
-			_goodTickers = 0;
-			Console.WriteLine("Loading earnings");
-			LoadEarnings();
-			stopwatch.Stop();
-			Console.WriteLine($"Loaded earnings in {stopwatch.Elapsed.TotalSeconds:F1} s, loading price data");
-			stopwatch.Restart();
-			LoadPriceData();
-			stopwatch.Stop();
-			Console.WriteLine($"Loaded price data in {stopwatch.Elapsed.TotalSeconds:F1} s, generating data points");
+			if (_tickerCache.Count == 0)
+			{
+				Console.WriteLine("Loading earnings");
+				LoadEarnings();
+				stopwatch.Stop();
+				Console.WriteLine($"Loaded earnings in {stopwatch.Elapsed.TotalSeconds:F1} s");
+				Console.WriteLine("Loading price data");
+				stopwatch.Restart();
+				LoadPriceData();
+				stopwatch.Stop();
+				Console.WriteLine($"Loaded price data in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			}
+			Console.WriteLine("Generating data points");
 			stopwatch.Restart();
 			Parallel.ForEach(_tickerCache, x =>
 			{
@@ -212,6 +214,9 @@ namespace Fundamentalist.Trainer
 				GenerateDataPoints(ticker, cacheEntry, null, _options.TestDate, _trainingData);
 				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData);
 			});
+			var sortData = (List<DataPoint> data) => data.Sort((x, y) => x.Date.CompareTo(y.Date));
+			sortData(_trainingData);
+			sortData(_testData);
 			stopwatch.Stop();
 			Console.WriteLine($"Removed {_badTickers} tickers ({(decimal)_badTickers / (_badTickers + _goodTickers):P1}) due to insufficient price data");
 			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -386,12 +391,14 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
+			/*
 			var metrics = mlContext.Regression.Evaluate(predictions);
 			Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
 			Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
 			Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
 			Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
 			Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
+			*/
 		}
 
 		private void SetScores(IDataView predictions)

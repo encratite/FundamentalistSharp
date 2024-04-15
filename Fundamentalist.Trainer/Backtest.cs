@@ -1,7 +1,5 @@
 ﻿using Fundamentalist.Common;
-using Newtonsoft.Json.Serialization;
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 
 namespace Fundamentalist.Trainer
 {
@@ -22,7 +20,8 @@ namespace Fundamentalist.Trainer
 		private int _portfolioStocks;
 		private int _historyDays;
 		private int _rebalanceDays;
-		private float _minimumScore;
+		private float _minimumGain;
+		private decimal _minimumStockPrice;
 		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.None;
 
 		public decimal IndexPerformance { get; set; }
@@ -33,10 +32,11 @@ namespace Fundamentalist.Trainer
 			SortedList<DateTime, PriceData> indexPriceData,
 			decimal initialMoney = 100000.0m,
 			decimal minimumInvestment = 50000.0m,
-			int portfolioStocks = 10,
+			int portfolioStocks = 5,
 			int historyDays = 7,
 			int rebalanceDays = 7,
-			float minimumScore = 0.00f
+			float minimumGain = 0.05f,
+			decimal minimumStockPrice = 1.0m
 		)
 		{
 			_testData = testData;
@@ -48,7 +48,8 @@ namespace Fundamentalist.Trainer
 			_portfolioStocks = portfolioStocks;
 			_historyDays = historyDays;
 			_rebalanceDays = rebalanceDays;
-			_minimumScore = minimumScore;
+			_minimumGain = minimumGain;
+			_minimumStockPrice = minimumStockPrice;
 		}
 
 		public decimal Run()
@@ -86,9 +87,9 @@ namespace Fundamentalist.Trainer
 					money += sellPrice - fees;
 					feesPaid += fees;
 					if (ratio > 1.0m)
-						log($"Gained {gain:C0} ({change:+#.00%;-#.00%;+0.00%}) from selling {stock.Data.Ticker} (prediction {stock.Data.Score.Value:F3})");
+						log($"Gained {gain:C0} ({change:+#.00%;-#.00%;+0.00%}) from selling {stock.Data.Ticker} ({currentPrice.Value:C2} vs. predicted {stock.Data.Score.Value:C2})");
 					else
-						log($"Lost {- gain:C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker} (prediction {stock.Data.Score.Value:F3})");
+						log($"Lost {-gain:C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker} ({currentPrice.Value:C2} vs. predicted {stock.Data.Score.Value:C2})");
 				}
 				portfolio.Clear();
 			};
@@ -109,18 +110,25 @@ namespace Fundamentalist.Trainer
 
 				log($"Rebalancing portfolio with {money:C0} in the bank");
 
-				var available =
+				var inRange =
 					_testData.Where(x =>
 						x.Date >= now - TimeSpan.FromDays(_historyDays) &&
-						x.Date <= now &&
-						x.Score.Value >= _minimumScore
-					)
-					.OrderByDescending(x => x.Score.Value)
-					.ToList();
-				if (!available.Any())
+						x.Date <= now
+					);
+				var available = new List<Tuple<DataPoint, float>>();
+				foreach (var x in inRange)
 				{
-					continue;
+					decimal? currentPrice = Trainer.GetOpenPrice(now, x.PriceData);
+					if (currentPrice == null || currentPrice.Value < _minimumStockPrice)
+						continue;
+					float predictedChange = x.Score.Value / (float)currentPrice.Value - 1.0f;
+					// log($"Predicted gain for {x.Ticker}: {predictedChange:#.00%}");
+					if (predictedChange >= _minimumGain)
+						available.Add(new Tuple<DataPoint, float>(x, predictedChange));
 				}
+				if (!available.Any())
+					continue;
+				available = available.OrderByDescending(x => x.Item2).ToList();
 
 				int availableCount = Math.Min(_portfolioStocks, available.Count);
 				if (availableCount <= 0)
@@ -134,7 +142,7 @@ namespace Fundamentalist.Trainer
 
 				// Buy new stocks
 				decimal investment = (money - 2 * _portfolioStocks * EstimatedFees) / _portfolioStocks;
-				foreach (var data in available)
+				foreach (var data in available.Select(x => x.Item1))
 				{
 					if (portfolio.Any(x => x.Data.Ticker == data.Ticker))
 					{
@@ -180,22 +188,14 @@ namespace Fundamentalist.Trainer
 			log($"  portfolioStocks: {_portfolioStocks}", BacktestLoggingLevel.FinalOnly);
 			log($"  historyDays: {_historyDays}", BacktestLoggingLevel.FinalOnly);
 			log($"  rebalanceDays: {_rebalanceDays}", BacktestLoggingLevel.FinalOnly);
-			log($"  minimumScore: {_minimumScore}", BacktestLoggingLevel.FinalOnly);
-			log($"  feesPaid: {feesPaid:C}", BacktestLoggingLevel.FinalOnly);
+			log($"  minimumScore: {_minimumGain}", BacktestLoggingLevel.FinalOnly);
+			// log($"  feesPaid: {feesPaid:C}", BacktestLoggingLevel.FinalOnly);
 			return performance;
 		}
 
 		decimal GetTransactionFees(int count, decimal price, bool selling)
 		{
-			decimal commission = Math.Max(count * 0.0049m, 0.99m);
-			decimal settlementFees = count * 0.003m;
-			decimal secFees = Math.Max(count * price * 0.000008m, 0.01m);
-			decimal tradingActivitesFees = Math.Min(Math.Max(count * 0.000145m, 0.01m), 5.95m);
-			decimal platformFees = Math.Max(count * 0.005m, 0.01m);
-			decimal transactionFees = commission + settlementFees + platformFees;
-			if (selling)
-				transactionFees += secFees + tradingActivitesFees;
-			return transactionFees;
+			return 0;
 		}
 	}
 }
