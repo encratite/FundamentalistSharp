@@ -3,13 +3,13 @@ using Fundamentalist.Trainer.Algorithm;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System.Diagnostics;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Fundamentalist.Trainer
 {
 	internal class Trainer
 	{
 		private const int PriceDataMinimum = 200;
+		private const bool PrintEvaluation = false;
 
 		private TrainerOptions _options;
 		private string _earningsPath;
@@ -303,14 +303,15 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
-			/*
-			var metrics = mlContext.Regression.Evaluate(predictions);
-			// Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
-			Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
-			Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
-			Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
-			Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
-			*/
+			if (PrintEvaluation)
+			{
+				var metrics = mlContext.Regression.Evaluate(predictions);
+				// Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
+				Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
+				Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
+				Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
+				Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
+			}
 		}
 
 		private void SetScores(IDataView predictions)

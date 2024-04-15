@@ -12,14 +12,14 @@ namespace Fundamentalist.Trainer
 
 	internal class Backtest
 	{
+		private const decimal Spread = 0.004m;
+
 		private List<DataPoint> _testData;
 		private SortedList<DateTime, PriceData> _indexPriceData;
 
-		private decimal _initialMoney;
-		private decimal _minimumInvestment;
-		private int _portfolioStocks;
-		private int _historyDays;
-		private int _rebalanceDays;
+		private decimal _initialCapital;
+		private decimal _minimumCapital;
+		private int _holdDays;
 		private float _minimumGain;
 		private decimal _minimumStockPrice;
 		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.None;
@@ -30,35 +30,30 @@ namespace Fundamentalist.Trainer
 		(
 			List<DataPoint> testData,
 			SortedList<DateTime, PriceData> indexPriceData,
-			decimal initialMoney = 100000.0m,
-			decimal minimumInvestment = 50000.0m,
-			int portfolioStocks = 5,
-			int historyDays = 7,
-			int rebalanceDays = 7,
-			float minimumGain = 0.05f,
+			decimal initialCapital = 100000.0m,
+			decimal minimumCapital = 50000.0m,
+			int holdDays = 7,
+			float minimumGain = 0.1f,
 			decimal minimumStockPrice = 1.0m
 		)
 		{
 			_testData = testData;
 			_indexPriceData = indexPriceData;
 
-			_initialMoney = initialMoney;
-			_minimumInvestment = minimumInvestment;
-
-			_portfolioStocks = portfolioStocks;
-			_historyDays = historyDays;
-			_rebalanceDays = rebalanceDays;
+			_initialCapital = initialCapital;
+			_minimumCapital = minimumCapital;
+			_holdDays = holdDays;
 			_minimumGain = minimumGain;
 			_minimumStockPrice = minimumStockPrice;
 		}
 
 		public decimal Run()
 		{
-			decimal money = _initialMoney;
+			decimal money = _initialCapital;
 			var portfolio = new List<Stock>();
 			decimal feesPaid = 0.0m;
 
-			DateTime initialDate = _testData.Take(2 * _portfolioStocks).Last().Date;
+			DateTime initialDate = _testData.First().Date;
 			DateTime now = initialDate;
 
 			var log = (string message, BacktestLoggingLevel loggingLevel = BacktestLoggingLevel.All) =>
@@ -71,10 +66,12 @@ namespace Fundamentalist.Trainer
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
-			var sellStocks = () =>
+			var sellStocks = (bool sellExpired) =>
 			{
-				foreach (var stock in portfolio)
+				foreach (var stock in portfolio.ToList())
 				{
+					if (sellExpired && now - stock.BuyDate < TimeSpan.FromDays(_holdDays))
+						continue;
 					var priceData = stock.Data.PriceData;
 					decimal? currentPrice = Trainer.GetOpenPrice(now, priceData);
 					if (currentPrice == null)
@@ -90,91 +87,46 @@ namespace Fundamentalist.Trainer
 						log($"Gained {gain:C0} ({change:+#.00%;-#.00%;+0.00%}) from selling {stock.Data.Ticker} ({currentPrice.Value:C2} vs. predicted {stock.Data.Score.Value:C2})");
 					else
 						log($"Lost {-gain:C0} ({change:+#.00%;-#.00%;+0.00%}) on {stock.Data.Ticker} ({currentPrice.Value:C2} vs. predicted {stock.Data.Score.Value:C2})");
+					portfolio.Remove(stock);
 				}
-				portfolio.Clear();
 			};
 
-			DateTime finalTime = _testData.Last().Date + TimeSpan.FromDays(_historyDays);
-			while (now.DayOfWeek != DayOfWeek.Friday)
-				now += TimeSpan.FromDays(1);
-			for (; now < finalTime; now += TimeSpan.FromDays(_rebalanceDays))
+			DateTime finalTime = _testData.Last().Date;
+			foreach (var dataPoint in _testData)
 			{
-				// Sell all stocks
-				sellStocks();
-
-				if (money < _minimumInvestment)
+				now = dataPoint.Date;
+				sellStocks(true);
+				if (money < 0)
 				{
 					log("Ran out of money");
 					break;
 				}
-
-				log($"Rebalancing portfolio with {money:C0} in the bank");
-
-				var inRange =
-					_testData.Where(x =>
-						x.Date >= now - TimeSpan.FromDays(_historyDays) &&
-						x.Date <= now
-					);
-				var available = new List<Tuple<DataPoint, float>>();
-				foreach (var x in inRange)
-				{
-					decimal? currentPrice = Trainer.GetOpenPrice(now, x.PriceData);
-					if (currentPrice == null || currentPrice.Value < _minimumStockPrice)
-						continue;
-					float predictedChange = x.Score.Value / (float)currentPrice.Value - 1.0f;
-					// log($"Predicted gain for {x.Ticker}: {predictedChange:#.00%}");
-					if (predictedChange >= _minimumGain)
-						available.Add(new Tuple<DataPoint, float>(x, predictedChange));
-				}
-				if (!available.Any())
+				if (portfolio.Any())
 					continue;
-				available = available.OrderByDescending(x => x.Item2).ToList();
-
-				int availableCount = Math.Min(_portfolioStocks, available.Count);
-				if (availableCount <= 0)
-				{
-					// There's nothing to buy
+				decimal? currentPrice = Trainer.GetOpenPrice(now, dataPoint.PriceData);
+				if (currentPrice == null || currentPrice.Value < _minimumStockPrice)
 					continue;
-				}
+				float predictedChange = dataPoint.Score.Value / (float)currentPrice.Value - 1.0f;
+				if (predictedChange < _minimumGain)
+					continue;
 
-				const decimal EstimatedFees = 10.0m;
-				const decimal Spread = 0.004m;
-
-				// Buy new stocks
-				decimal investment = (money - 2 * _portfolioStocks * EstimatedFees) / _portfolioStocks;
-				foreach (var data in available.Select(x => x.Item1))
+				// Simulate spread
+				currentPrice *= 1.0m + Spread;
+				int count = (int)Math.Floor(money / currentPrice.Value);
+				var stock = new Stock
 				{
-					if (portfolio.Any(x => x.Data.Ticker == data.Ticker))
-					{
-						// Make sure we don't accidentally buy the same stock twice
-						continue;
-					}
-					decimal? currentPrice = Trainer.GetOpenPrice(now, data.PriceData);
-					if (currentPrice == null)
-					{
-						// Lacking price data
-						continue;
-					}
-					// Simulate spread
-					currentPrice *= 1.0m + Spread;
-					int count = (int)Math.Floor(investment / currentPrice.Value);
-					var stock = new Stock
-					{
-						Count = count,
-						BuyDate = now,
-						BuyPrice = currentPrice.Value,
-						Data = data
-					};
-					decimal fees = GetTransactionFees(count, currentPrice.Value, false);
-					money -= count * currentPrice.Value + fees;
-					feesPaid += fees;
-					portfolio.Add(stock);
-					if (portfolio.Count >= _portfolioStocks)
-						break;
-				}
+					Count = count,
+					BuyDate = now,
+					BuyPrice = currentPrice.Value,
+					Data = dataPoint
+				};
+				decimal fees = GetTransactionFees(count, currentPrice.Value, false);
+				money -= count * currentPrice.Value + fees;
+				feesPaid += fees;
+				portfolio.Add(stock);
 			}
 			// Cash out
-			sellStocks();
+			sellStocks(false);
 
 			decimal? indexPast = Trainer.GetClosePrice(initialDate, _indexPriceData);
 			decimal? indexNow = Trainer.GetClosePrice(now, _indexPriceData);
@@ -183,12 +135,10 @@ namespace Fundamentalist.Trainer
 			IndexPerformance = indexNow.Value / indexPast.Value - 1.0m;
 
 			stopwatch.Stop();
-			decimal performance = money / _initialMoney - 1.0m;
+			decimal performance = money / _initialCapital - 1.0m;
 			log($"Finished backtest from {initialDate.ToShortDateString()} to {now.ToShortDateString()} with {money:C0} in the bank ({performance:+#.00%;-#.00%;+0.00%})", BacktestLoggingLevel.FinalOnly);
-			log($"  portfolioStocks: {_portfolioStocks}", BacktestLoggingLevel.FinalOnly);
-			log($"  historyDays: {_historyDays}", BacktestLoggingLevel.FinalOnly);
-			log($"  rebalanceDays: {_rebalanceDays}", BacktestLoggingLevel.FinalOnly);
-			log($"  minimumScore: {_minimumGain}", BacktestLoggingLevel.FinalOnly);
+			log($"  holdDays: {_holdDays}", BacktestLoggingLevel.FinalOnly);
+			log($"  minimumGain: {_minimumGain}", BacktestLoggingLevel.FinalOnly);
 			// log($"  feesPaid: {feesPaid:C}", BacktestLoggingLevel.FinalOnly);
 			return performance;
 		}
