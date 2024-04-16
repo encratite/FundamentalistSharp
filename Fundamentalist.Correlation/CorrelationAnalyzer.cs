@@ -51,11 +51,14 @@ namespace Fundamentalist.Correlation
 			var newFeatureNames = new List<string>();
 			for (int i = 0; i < Features; i++)
 			{
-				for (int j = 0; j < i; j++)
+				for (int j = 0; j < Features; j++)
 				{
-					string name = $"{_featureNames[i]} + {_featureNames[j]}";
-					newFeatureNames.Add(name);
-					syntheticFeatures++;
+					if (i != j)
+					{
+						string name = $"{_featureNames[i]} - {_featureNames[j]}";
+						newFeatureNames.Add(name);
+						syntheticFeatures++;
+					}
 				}
 			}
 
@@ -91,10 +94,14 @@ namespace Fundamentalist.Correlation
 						int offset = 0;
 						for (int i = 0; i < Features; i++)
 						{
-							for (int j = 0; j < i; j++, offset++)
+							for (int j = 0; j < Features; j++)
 							{
-								float xCurrent = GetChange(previousFeatures[i], features[i]) + GetChange(previousFeatures[j], features[j]);
-								xValues[offset].Add(xCurrent);
+								if (i != j)
+								{
+									float xCurrent = GetChange(previousFeatures[i], features[i]) - GetChange(previousFeatures[j], features[j]);
+									xValues[offset].Add(xCurrent);
+									offset++;
+								}
 							}
 						}
 					}
