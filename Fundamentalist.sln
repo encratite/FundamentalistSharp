@@ -9,7 +9,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Common", "Fu
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Trainer", "Fundamentalist.Trainer\Fundamentalist.Trainer.csproj", "{D98D3494-2600-44A3-BC46-F2B918632030}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fundamentalist.Xbrl", "Fundamentalist.Xbrl\Fundamentalist.Xbrl.csproj", "{459AEFF8-1387-4471-8AD4-E33AE4A53926}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Xbrl", "Fundamentalist.Xbrl\Fundamentalist.Xbrl.csproj", "{459AEFF8-1387-4471-8AD4-E33AE4A53926}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fundamentalist.Correlation", "Fundamentalist.Correlation\Fundamentalist.Correlation.csproj", "{D95C15FC-4870-4919-8D17-8575D448E181}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{459AEFF8-1387-4471-8AD4-E33AE4A53926}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{459AEFF8-1387-4471-8AD4-E33AE4A53926}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{459AEFF8-1387-4471-8AD4-E33AE4A53926}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D95C15FC-4870-4919-8D17-8575D448E181}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D95C15FC-4870-4919-8D17-8575D448E181}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D95C15FC-4870-4919-8D17-8575D448E181}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D95C15FC-4870-4919-8D17-8575D448E181}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

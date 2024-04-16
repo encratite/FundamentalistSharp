@@ -12,7 +12,7 @@ namespace Fundamentalist.Common
 			var lines = File.ReadAllLines(csvPath);
 			Parallel.ForEach(lines.Skip(1), line =>
 			{
-				var tokens = line.Split(',');
+				var tokens = Split(line);
 				string ticker = tokens[0];
 				dictionary[ticker] = true;
 			});
@@ -26,7 +26,7 @@ namespace Fundamentalist.Common
 			var lines = File.ReadAllLines(csvPath);
 			Parallel.ForEach(lines.Skip(1), line =>
 			{
-				var tokens = line.Split(',');
+				var tokens = Split(line);
 				var features = tokens.Skip(2);
 				if (featureLimit != null)
 					features = features.Take(featureLimit.Value);
@@ -41,6 +41,16 @@ namespace Fundamentalist.Common
 			return output;
 		}
 
+		public static List<string> GetFeatureNames(string csvPath)
+		{
+			using (var reader = new StreamReader(csvPath))
+			{
+				string line = reader.ReadLine();
+				var tokens = Split(line);
+				return tokens.Skip(2).ToList();
+			}
+		}
+
 		public static SortedList<DateTime, PriceData> GetPriceData(string ticker, string directory)
 		{
 			string csvPath = Path.Combine(directory, $"{ticker}.csv");
@@ -50,7 +60,7 @@ namespace Fundamentalist.Common
 			var output = new SortedList<DateTime, PriceData>();
 			foreach (string line in lines.Skip(1))
 			{
-				var tokens = line.Split(',');
+				var tokens = Split(line);
 				if (tokens.Any(x => x == "null"))
 					continue;
 				var priceData = new PriceData
@@ -63,6 +73,12 @@ namespace Fundamentalist.Common
 				output.Add(priceData.Date, priceData);
 			}
 			return output;
+		}
+
+		private static string[] Split(string line)
+		{
+			var tokens = line.Split(',');
+			return tokens;
 		}
 	}
 }
