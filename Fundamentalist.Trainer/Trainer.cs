@@ -16,13 +16,11 @@ namespace Fundamentalist.Trainer
 		private string _priceDataDirectory;
 
 		private SortedList<DateTime, PriceData> _indexPriceData = null;
-		private Dictionary<string, TickerCacheEntry> _tickerCache = new Dictionary<string, TickerCacheEntry>();
+		private DatasetLoader _datasetLoader = new DatasetLoader();
+		private Dictionary<string, TickerCacheEntry> _tickerCache;
 
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
-
-		private int _badTickers = 0;
-		private int _goodTickers = 0;
 
 		public void Run(TrainerOptions options, string earningsPath, string priceDataDirectory)
 		{
@@ -42,25 +40,13 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				new LbfgsPoisson(1, 1, 20),
-				new LbfgsPoisson(1, 1, 30),
-				new LbfgsPoisson(1, 1, 50),
-				new LbfgsPoisson(1, 1, 100),
-				new LbfgsPoisson(0.5f, 0.5f, 20),
-				new LbfgsPoisson(0.1f, 0.1f, 20),
-				new LbfgsPoisson(1.05f, 1, 20),
-				new LbfgsPoisson(1.1f, 1, 20),
-				new LbfgsPoisson(1, 1.05f, 20),
-				new LbfgsPoisson(1, 1.1f, 20),
-				// new Sdca(75, null, null),
-				// new OnlineGradientDescent(200, 0.01f, 0.0f),
-				/*
+				new Sdca(75, null, null),
+				new OnlineGradientDescent(200, 0.01f, 0.0f),
 				new LightGbmRegression(100, null, 1000),
 				new FastTree(20, 100),
 				new FastTreeTweedie(20, 100, 10),
 				new FastForest(20, 1000, 10),
 				new Gam(100, 255),
-				*/
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
@@ -119,15 +105,10 @@ namespace Fundamentalist.Trainer
 			_testData = new List<DataPoint>();
 			if (_tickerCache.Count == 0)
 			{
-				Console.WriteLine("Loading earnings");
-				LoadEarnings();
+				Console.WriteLine("Loading datasets");
+				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.Features, PriceDataMinimum);
 				stopwatch.Stop();
-				Console.WriteLine($"Loaded earnings in {stopwatch.Elapsed.TotalSeconds:F1} s");
-				Console.WriteLine("Loading price data");
-				stopwatch.Restart();
-				LoadPriceData();
-				stopwatch.Stop();
-				Console.WriteLine($"Loaded price data in {stopwatch.Elapsed.TotalSeconds:F1} s");
+				Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			}
 			Console.WriteLine("Generating data points");
 			stopwatch.Restart();
@@ -142,46 +123,8 @@ namespace Fundamentalist.Trainer
 			sortData(_trainingData);
 			sortData(_testData);
 			stopwatch.Stop();
-			Console.WriteLine($"Removed {_badTickers} tickers ({(decimal)_badTickers / (_badTickers + _goodTickers):P1}) due to insufficient price data");
+			Console.WriteLine($"Removed {_datasetLoader.GoodTickers} tickers ({(decimal)_datasetLoader.BadTickers / (_datasetLoader.BadTickers + _datasetLoader.GoodTickers):P1}) due to insufficient price data");
 			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
-		}
-
-		private void LoadEarnings()
-		{
-			var earningLines = DataReader.GetEarnings(_earningsPath, _options.Features);
-			foreach (var x in earningLines)
-			{
-				string ticker = x.Ticker;
-				TickerCacheEntry cacheEntry;
-				if (!_tickerCache.TryGetValue(ticker, out cacheEntry))
-				{
-					cacheEntry = new TickerCacheEntry();
-					_tickerCache[ticker] = cacheEntry;
-				}
-				cacheEntry.Earnings.Add(x.Date, x.Features);
-			}
-		}
-
-		private void LoadPriceData()
-		{
-			var options = new ParallelOptions
-			{
-				MaxDegreeOfParallelism = 4
-			};
-			Parallel.ForEach(_tickerCache.ToList(), options, x =>
-			{
-				string ticker = x.Key;
-				var cacheEntry = x.Value;
-				var priceData = DataReader.GetPriceData(ticker, _priceDataDirectory);
-				if (priceData == null || priceData.Count < PriceDataMinimum)
-				{
-					_tickerCache.Remove(ticker);
-					Interlocked.Increment(ref _badTickers);
-					return;
-				}
-				cacheEntry.PriceData = priceData;
-				Interlocked.Increment(ref _goodTickers);
-			});
 		}
 
 		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
@@ -189,38 +132,6 @@ namespace Fundamentalist.Trainer
 			return
 				(!from.HasValue || date.Value >= from.Value) &&
 				(!to.HasValue || date.Value < to.Value);
-		}
-
-		private float GetSimpleMovingAverage(int days, float[] prices)
-		{
-			float simpleMovingAverage = prices.TakeLast(days).Sum() / days;
-			return simpleMovingAverage;
-		}
-
-		private float GetExponentialMovingAverage(int days, float[] prices)
-		{
-			var exponentialMovingAverage = new float[prices.Length];
-			exponentialMovingAverage[days - 1] = GetSimpleMovingAverage(days, prices);
-			float weight = 2.0f / (days + 1);
-			for (int i = days; i < prices.Length; i++)
-				exponentialMovingAverage[i] = weight * prices[i] + (1 - weight) * exponentialMovingAverage[i - 1];
-			return exponentialMovingAverage[prices.Length - 1];
-		}
-
-		private float GetRelativeStrengthIndex(int days, float[] prices)
-		{
-			float gains = 0.0f;
-			float losses = 0.0f;
-			for (int i = prices.Length - days; i < prices.Length; i++)
-			{
-				float change = prices[i] / prices[i - 1] - 1.0f;
-				if (change >= 0)
-					gains += change;
-				else
-					losses -= change;
-			}
-			float relativeStrengthIndex = 100.0f - 100.0f / (1.0f + gains / losses);
-			return relativeStrengthIndex;
 		}
 
 		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
@@ -251,7 +162,7 @@ namespace Fundamentalist.Trainer
 					continue;
 				float futurePrice = (float)futurePrices[_options.ForecastDays - 1].Close;
 
-				var priceDataFeatures = GetPriceDataFeatures(currentPrice, pastPrices);
+				var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
 				float label = futurePrice;
 				var features = earningsFeatures.Concat(priceDataFeatures);
 				var dataPoint = new DataPoint
@@ -266,35 +177,6 @@ namespace Fundamentalist.Trainer
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
 			}
-		}
-
-		private List<float> GetPriceDataFeatures(decimal? currentPrice, float[] pastPrices)
-		{
-			float sma10 = GetSimpleMovingAverage(10, pastPrices);
-			float sma20 = GetSimpleMovingAverage(20, pastPrices);
-			float sma50 = GetSimpleMovingAverage(50, pastPrices);
-			float sma200 = GetSimpleMovingAverage(200, pastPrices);
-			float ema12 = GetExponentialMovingAverage(12, pastPrices);
-			float ema26 = GetExponentialMovingAverage(26, pastPrices);
-			float ema50 = GetExponentialMovingAverage(50, pastPrices);
-			float ema200 = GetExponentialMovingAverage(200, pastPrices);
-			float macd = ema12 - ema26;
-			float rsi = GetRelativeStrengthIndex(14, pastPrices);
-			var priceDataFeatures = new List<float>
-				{
-					(float)currentPrice.Value,
-					sma10,
-					sma20,
-					sma50,
-					sma200,
-					ema12,
-					ema26,
-					ema50,
-					ema200,
-					macd,
-					rsi
-				};
-			return priceDataFeatures;
 		}
 
 		private void TrainAndEvaluateModel(IAlgorithm algorithm)

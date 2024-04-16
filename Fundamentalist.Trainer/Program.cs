@@ -49,14 +49,28 @@ namespace Fundamentalist.Trainer
 				trainer.Run(options, earningsPath, priceDataDirectory);
 			}
 			*/
-			var options = new TrainerOptions
+			var experiments = new int[]
 			{
-				Features = 500,
-				ForecastDays = 5,
-				TrainingDate = new DateTime(2016, 1, 1),
-				TestDate = new DateTime(2022, 1, 1)
+				1,
+				2,
+				3,
+				4,
+				5,
+				10,
+				25,
+				50
 			};
-			trainer.Run(options, earningsPath, priceDataDirectory);
+			foreach (int forecastDays in experiments)
+			{
+				var options = new TrainerOptions
+				{
+					Features = 500,
+					ForecastDays = forecastDays,
+					TrainingDate = new DateTime(2016, 1, 1),
+					TestDate = new DateTime(2022, 1, 1)
+				};
+				trainer.Run(options, earningsPath, priceDataDirectory);
+			}
 		}
 	}
 }
