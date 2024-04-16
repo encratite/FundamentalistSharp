@@ -18,10 +18,11 @@ namespace Fundamentalist.Trainer
 		private SortedList<DateTime, PriceData> _indexPriceData;
 
 		private decimal _initialCapital;
-		private decimal _minimumCapital;
+		private decimal _investment;
 		private int _holdDays;
 		private float _minimumGain;
 		private decimal _minimumStockPrice;
+		private decimal _minimumVolume;
 		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.None;
 
 		public decimal IndexPerformance { get; set; }
@@ -31,20 +32,22 @@ namespace Fundamentalist.Trainer
 			List<DataPoint> testData,
 			SortedList<DateTime, PriceData> indexPriceData,
 			decimal initialCapital = 100000.0m,
-			decimal minimumCapital = 50000.0m,
+			decimal investment = 25000.0m,
 			int holdDays = 7,
-			float minimumGain = 0.1f,
-			decimal minimumStockPrice = 1.0m
+			float minimumGain = 0.05f,
+			decimal minimumStockPrice = 1.0m,
+			decimal minimumVolume = 1e6m
 		)
 		{
 			_testData = testData;
 			_indexPriceData = indexPriceData;
 
 			_initialCapital = initialCapital;
-			_minimumCapital = minimumCapital;
+			_investment = investment;
 			_holdDays = holdDays;
 			_minimumGain = minimumGain;
 			_minimumStockPrice = minimumStockPrice;
+			_minimumVolume = minimumVolume;
 		}
 
 		public decimal Run()
@@ -91,39 +94,46 @@ namespace Fundamentalist.Trainer
 				}
 			};
 
-			DateTime finalTime = _testData.Last().Date;
-			foreach (var dataPoint in _testData)
+			DateTime finalTime = _testData.Last().Date + TimeSpan.FromDays(_holdDays);
+			for (; now < finalTime; now += TimeSpan.FromDays(1))
 			{
-				now = dataPoint.Date;
+				if (
+					now.DayOfWeek == DayOfWeek.Saturday ||
+					now.DayOfWeek == DayOfWeek.Sunday
+				)
+					continue;
 				sellStocks(true);
-				if (money < 0)
+				foreach (var dataPoint in _testData.Where(x => x.Date == now - TimeSpan.FromDays(1)))
 				{
-					log("Ran out of money");
-					break;
-				}
-				if (portfolio.Any())
-					continue;
-				decimal? currentPrice = Trainer.GetOpenPrice(now, dataPoint.PriceData);
-				if (currentPrice == null || currentPrice.Value < _minimumStockPrice)
-					continue;
-				float predictedChange = dataPoint.Score.Value / (float)currentPrice.Value - 1.0f;
-				if (predictedChange < _minimumGain)
-					continue;
+					if (money < _investment)
+						break;
+					if (dataPoint.Score.Value == float.NaN)
+						continue;
+					decimal? currentPrice = Trainer.GetOpenPrice(now, dataPoint.PriceData);
+					if (currentPrice == null || currentPrice.Value < _minimumStockPrice)
+						continue;
+					decimal volume = dataPoint.PriceData[now].Volume * currentPrice.Value;
+					if (volume < _minimumVolume)
+						continue;
+					float predictedChange = dataPoint.Score.Value / (float)currentPrice.Value - 1.0f;
+					if (predictedChange < _minimumGain)
+						continue;
 
-				// Simulate spread
-				currentPrice *= 1.0m + Spread;
-				int count = (int)Math.Floor(money / currentPrice.Value);
-				var stock = new Stock
-				{
-					Count = count,
-					BuyDate = now,
-					BuyPrice = currentPrice.Value,
-					Data = dataPoint
-				};
-				decimal fees = GetTransactionFees(count, currentPrice.Value, false);
-				money -= count * currentPrice.Value + fees;
-				feesPaid += fees;
-				portfolio.Add(stock);
+					// Simulate spread
+					currentPrice *= 1.0m + Spread;
+					int count = (int)Math.Floor(_investment / currentPrice.Value);
+					var stock = new Stock
+					{
+						Count = count,
+						BuyDate = now,
+						BuyPrice = currentPrice.Value,
+						Data = dataPoint
+					};
+					decimal fees = GetTransactionFees(count, currentPrice.Value, false);
+					money -= count * currentPrice.Value + fees;
+					feesPaid += fees;
+					portfolio.Add(stock);
+				}
 			}
 			// Cash out
 			sellStocks(false);

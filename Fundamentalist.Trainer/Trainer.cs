@@ -9,7 +9,7 @@ namespace Fundamentalist.Trainer
 	internal class Trainer
 	{
 		private const int PriceDataMinimum = 200;
-		private const bool PrintEvaluation = false;
+		private const bool PrintEvaluation = true;
 
 		private TrainerOptions _options;
 		private string _earningsPath;
@@ -42,13 +42,29 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
+				// new Sdca(50, null, null),
+				/*
+				new Sdca(100, null, null),
+				new Sdca(500, null, null),
 				new Sdca(500, 1e2f, 1e2f),
+				new Sdca(500, 1.0f, 1.0f),
+				new Sdca(500, 1e-1f, 1e-1f),
+				new Sdca(500, 1e-2f, 1e-2f),
+				*/
+				new OnlineGradientDescent(100, 0.1f, 0.0f),
+				new OnlineGradientDescent(200, 0.01f, 0.0f),
+				new OnlineGradientDescent(500, 0.001f, 0.0f),
+				new OnlineGradientDescent(100, 0.1f, 0.1f),
+				new OnlineGradientDescent(100, 0.1f, 0.2f),
+				new OnlineGradientDescent(100, 0.1f, 0.3f),
 				new OnlineGradientDescent(100, 0.1f, 0.4f),
+				/*
 				new LightGbmRegression(100, null, 1000),
 				new FastTree(20, 100),
 				new FastTreeTweedie(20, 100, 10),
 				new FastForest(20, 1000, 10),
 				new Gam(100, 255),
+				*/
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
