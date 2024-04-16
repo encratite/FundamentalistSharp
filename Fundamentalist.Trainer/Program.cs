@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using Fundamentalist.Common;
+using System.Reflection;
 
 namespace Fundamentalist.Trainer
 {
@@ -35,6 +36,7 @@ namespace Fundamentalist.Trainer
 				trainer.Run(options, earningsPath, priceDataDirectory);
 			}
 			*/
+			/*
 			for (int features = 100; features <= 500; features += 100)
 			{
 				var options = new TrainerOptions
@@ -46,6 +48,15 @@ namespace Fundamentalist.Trainer
 				};
 				trainer.Run(options, earningsPath, priceDataDirectory);
 			}
+			*/
+			var options = new TrainerOptions
+			{
+				Features = 500,
+				ForecastDays = 5,
+				TrainingDate = new DateTime(2016, 1, 1),
+				TestDate = new DateTime(2022, 1, 1)
+			};
+			trainer.Run(options, earningsPath, priceDataDirectory);
 		}
 	}
 }

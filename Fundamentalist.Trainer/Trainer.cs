@@ -42,22 +42,18 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				// new Sdca(50, null, null),
-				/*
-				new Sdca(100, null, null),
-				new Sdca(500, null, null),
-				new Sdca(500, 1e2f, 1e2f),
-				new Sdca(500, 1.0f, 1.0f),
-				new Sdca(500, 1e-1f, 1e-1f),
-				new Sdca(500, 1e-2f, 1e-2f),
-				*/
-				new OnlineGradientDescent(100, 0.1f, 0.0f),
-				new OnlineGradientDescent(200, 0.01f, 0.0f),
-				new OnlineGradientDescent(500, 0.001f, 0.0f),
-				new OnlineGradientDescent(100, 0.1f, 0.1f),
-				new OnlineGradientDescent(100, 0.1f, 0.2f),
-				new OnlineGradientDescent(100, 0.1f, 0.3f),
-				new OnlineGradientDescent(100, 0.1f, 0.4f),
+				new LbfgsPoisson(1, 1, 20),
+				new LbfgsPoisson(1, 1, 30),
+				new LbfgsPoisson(1, 1, 50),
+				new LbfgsPoisson(1, 1, 100),
+				new LbfgsPoisson(0.5f, 0.5f, 20),
+				new LbfgsPoisson(0.1f, 0.1f, 20),
+				new LbfgsPoisson(1.05f, 1, 20),
+				new LbfgsPoisson(1.1f, 1, 20),
+				new LbfgsPoisson(1, 1.05f, 20),
+				new LbfgsPoisson(1, 1.1f, 20),
+				// new Sdca(75, null, null),
+				// new OnlineGradientDescent(200, 0.01f, 0.0f),
 				/*
 				new LightGbmRegression(100, null, 1000),
 				new FastTree(20, 100),
