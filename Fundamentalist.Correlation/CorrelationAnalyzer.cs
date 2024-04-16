@@ -40,8 +40,8 @@ namespace Fundamentalist.Correlation
 
 		private void Analyze()
 		{
-			const int Features = 50;
-			const int ForecastDays = 20;
+			const int Features = 100;
+			const int ForecastDays = 5;
 
 			Console.WriteLine("Calculating coefficients");
 			var stopwatch = new Stopwatch();
@@ -54,6 +54,8 @@ namespace Fundamentalist.Correlation
 
 			foreach (var entry in _cache.Values)
 			{
+				float[] previousFeatures = null;
+				decimal? previousPrice = null;
 				foreach (var pair in entry.Earnings)
 				{
 					var now = pair.Key;
@@ -66,13 +68,18 @@ namespace Fundamentalist.Correlation
 						.Skip(ForecastDays - 1)
 						.Select(p => p.Value.Open)
 						.FirstOrDefault();
-					float yCurrent = (float)price;
-					yValues.Add(yCurrent);
-					for (int i = 0; i < Features; i++)
+					if (previousFeatures != null && previousPrice.HasValue)
 					{
-						float xCurrent = features[i];
-						xValues[i].Add(xCurrent);
+						float yCurrent = GetChange((float)previousPrice.Value, (float)price);
+						yValues.Add(yCurrent);
+						for (int i = 0; i < Features; i++)
+						{
+							float xCurrent = GetChange(previousFeatures[i], features[i]);
+							xValues[i].Add(xCurrent);
+						}
 					}
+					previousFeatures = features;
+					previousPrice = price;
 				}
 			}
 
@@ -93,7 +100,20 @@ namespace Fundamentalist.Correlation
 
 			var sortedResults = results.OrderByDescending(x => x.Coefficient);
 			foreach (var result in sortedResults)
-				Console.WriteLine($"{result.Feature}: {result.Coefficient:F2}");
+				Console.WriteLine($"{result.Feature}: {result.Coefficient:F3}");
+		}
+
+		private float GetChange(float previous, float current)
+		{
+			const float Maximum = 10.0f;
+			const float Epsilon = 1e-4f;
+			if (Math.Abs(previous) < Epsilon)
+				previous = Math.Sign(previous) * Epsilon;
+			float ratio = current / previous;
+			if (Math.Abs(ratio) > Maximum)
+				ratio = Math.Sign(ratio) * Maximum;
+			float change = ratio - 1.0f;
+			return change;
 		}
 
 		private decimal GetSpearmanCoefficient(float[] x, float[] y, ref int[] yRanks)
