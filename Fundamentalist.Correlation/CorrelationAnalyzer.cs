@@ -1,7 +1,6 @@
 ﻿using Fundamentalist.Common;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 namespace Fundamentalist.Correlation
 {
@@ -42,15 +41,30 @@ namespace Fundamentalist.Correlation
 		{
 			const int Features = 100;
 			const int ForecastDays = 5;
+			const int Year = 2015;
 
 			Console.WriteLine("Calculating coefficients");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
-			var xValues = new List<float>[Features];
+			int syntheticFeatures = 0;
+			var newFeatureNames = new List<string>();
 			for (int i = 0; i < Features; i++)
+			{
+				for (int j = 0; j < i; j++)
+				{
+					string name = $"{_featureNames[i]} + {_featureNames[j]}";
+					newFeatureNames.Add(name);
+					syntheticFeatures++;
+				}
+			}
+
+			var xValues = new List<float>[syntheticFeatures];
+			for (int i = 0; i < xValues.Length; i++)
 				xValues[i] = new List<float>();
 			var yValues = new List<float>();
+
+			_featureNames = newFeatureNames;
 
 			foreach (var entry in _cache.Values)
 			{
@@ -59,6 +73,8 @@ namespace Fundamentalist.Correlation
 				foreach (var pair in entry.Earnings)
 				{
 					var now = pair.Key;
+					if (now.Year < Year)
+						continue;
 					var features = pair.Value;
 					var prices = entry.PriceData.Where(p => p.Key > now).ToList();
 					if (prices.Count < ForecastDays)
@@ -72,10 +88,14 @@ namespace Fundamentalist.Correlation
 					{
 						float yCurrent = GetChange((float)previousPrice.Value, (float)price);
 						yValues.Add(yCurrent);
+						int offset = 0;
 						for (int i = 0; i < Features; i++)
 						{
-							float xCurrent = GetChange(previousFeatures[i], features[i]);
-							xValues[i].Add(xCurrent);
+							for (int j = 0; j < i; j++, offset++)
+							{
+								float xCurrent = GetChange(previousFeatures[i], features[i]) + GetChange(previousFeatures[j], features[j]);
+								xValues[offset].Add(xCurrent);
+							}
 						}
 					}
 					previousFeatures = features;
@@ -86,10 +106,10 @@ namespace Fundamentalist.Correlation
 			int[] yRanks = null;
 			var y = yValues.ToArray();
 			var results = new ConcurrentBag<CorrelationResult>();
-			Parallel.For(0, Features, i =>
+			Parallel.For(0, syntheticFeatures, i =>
 			{
 				var x = xValues[i].ToArray();
-				string name = $"{_featureNames[i]} ({i})";
+				string name = _featureNames[i];
 				decimal coefficient = GetSpearmanCoefficient(x, y, ref yRanks);
 				var result = new CorrelationResult(name, coefficient);
 				results.Add(result);
