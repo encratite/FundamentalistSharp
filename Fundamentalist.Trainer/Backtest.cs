@@ -34,7 +34,7 @@ namespace Fundamentalist.Trainer
 			decimal initialCapital = 100000.0m,
 			decimal investment = 25000.0m,
 			int holdDays = 7,
-			float minimumGain = 0.05f,
+			float minimumGain = 0.0f,
 			decimal minimumStockPrice = 1.0m,
 			decimal minimumVolume = 1e6m
 		)
@@ -107,16 +107,13 @@ namespace Fundamentalist.Trainer
 				{
 					if (money < _investment)
 						break;
-					if (dataPoint.Score.Value == float.NaN)
+					if (dataPoint.Score.Value == float.NaN || dataPoint.Score.Value < _minimumGain)
 						continue;
 					decimal? currentPrice = Trainer.GetOpenPrice(now, dataPoint.PriceData);
 					if (currentPrice == null || currentPrice.Value < _minimumStockPrice)
 						continue;
 					decimal volume = dataPoint.PriceData[now].Volume * currentPrice.Value;
 					if (volume < _minimumVolume)
-						continue;
-					float predictedChange = dataPoint.Score.Value / (float)currentPrice.Value - 1.0f;
-					if (predictedChange < _minimumGain)
 						continue;
 
 					// Simulate spread
