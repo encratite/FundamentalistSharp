@@ -1,9 +1,9 @@
 ﻿namespace Fundamentalist.Correlation
 {
-	internal class IndexFloat
+	internal struct IndexFloat
 	{
-		public float Value { get; set; }
-		public int Index { get; set; }
+		public float Value;
+		public int Index;
 
 		public IndexFloat(float value, int index)
 		{

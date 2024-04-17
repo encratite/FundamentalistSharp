@@ -1,6 +1,7 @@
 ﻿using Fundamentalist.Common;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Reflection.Metadata.Ecma335;
 
 namespace Fundamentalist.Correlation
 {
@@ -39,15 +40,16 @@ namespace Fundamentalist.Correlation
 
 		private void Analyze()
 		{
-			const int Features = 100;
+			const int Features = 1000;
 			const int ForecastDays = 5;
-			const int Year = 2015;
+			const int Year = 2010;
 
-			Console.WriteLine("Calculating coefficients");
+			Console.WriteLine($"Calculating coefficients from {Year} to {DateTime.Now.Year}");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
-			int syntheticFeatures = 0;
+			/*
+			int dynamicFeatureCount = 0;
 			var newFeatureNames = new List<string>();
 			for (int i = 0; i < Features; i++)
 			{
@@ -57,19 +59,25 @@ namespace Fundamentalist.Correlation
 					{
 						string name = $"{_featureNames[i]} - {_featureNames[j]}";
 						newFeatureNames.Add(name);
-						syntheticFeatures++;
+						dynamicFeatureCount++;
 					}
 				}
 			}
+			*/
+			int dynamicFeatureCount = Features;
+			var dynamicFeatureNames = _featureNames;
 
-			var xValues = new List<float>[syntheticFeatures];
-			for (int i = 0; i < xValues.Length; i++)
-				xValues[i] = new List<float>();
-			var yValues = new List<float>();
+			var observations = new ConcurrentBag<Observation>[dynamicFeatureCount];
+			for (int i = 0; i < observations.Length; i++)
+				observations[i] = new ConcurrentBag<Observation>();
 
-			_featureNames = newFeatureNames;
+			_featureNames = dynamicFeatureNames;
 
+			int earningsCount = 0;
 			foreach (var entry in _cache.Values)
+				earningsCount += entry.Earnings.Count;
+
+			Parallel.ForEach(_cache.Values, entry =>
 			{
 				float[] previousFeatures = null;
 				decimal? previousPrice = null;
@@ -90,7 +98,7 @@ namespace Fundamentalist.Correlation
 					if (previousFeatures != null && previousPrice.HasValue)
 					{
 						float yCurrent = GetChange((float)previousPrice.Value, (float)price);
-						yValues.Add(yCurrent);
+						/*
 						int offset = 0;
 						for (int i = 0; i < Features; i++)
 						{
@@ -99,35 +107,51 @@ namespace Fundamentalist.Correlation
 								if (i != j)
 								{
 									float xCurrent = GetChange(previousFeatures[i], features[i]) - GetChange(previousFeatures[j], features[j]);
-									xValues[offset].Add(xCurrent);
+									var observation = new Observation(xCurrent, yCurrent);
+									observations[offset].Add(observation);
 									offset++;
 								}
+							}
+						}
+						*/
+						for (int i = 0; i < Features; i++)
+						{
+							if (previousFeatures[i] != 0 && features[i] != 0)
+							{
+								float xCurrent = GetChange(previousFeatures[i], features[i]);
+								var observation = new Observation(xCurrent, yCurrent);
+								observations[i].Add(observation);
 							}
 						}
 					}
 					previousFeatures = features;
 					previousPrice = price;
 				}
-			}
-
-			int[] yRanks = null;
-			var y = yValues.ToArray();
-			var results = new ConcurrentBag<CorrelationResult>();
-			Parallel.For(0, syntheticFeatures, i =>
-			{
-				var x = xValues[i].ToArray();
-				string name = _featureNames[i];
-				decimal coefficient = GetSpearmanCoefficient(x, y, ref yRanks);
-				var result = new CorrelationResult(name, coefficient);
-				results.Add(result);
 			});
 
-			stopwatch.Stop();
-			Console.WriteLine($"Calculated coefficients in {stopwatch.Elapsed.TotalSeconds:F1} s");
-
+			var results = new ConcurrentBag<CorrelationResult>();
+			Parallel.For(0, dynamicFeatureCount, i =>
+			{
+				string name = _featureNames[i];
+				var featureObservations = observations[i];
+				if (featureObservations.Count == 0)
+					return;
+				decimal coefficient = GetSpearmanCoefficient(featureObservations);
+				var result = new CorrelationResult(name, coefficient, featureObservations.Count);
+				results.Add(result);
+			});
 			var sortedResults = results.OrderByDescending(x => x.Coefficient);
+
+			stopwatch.Stop();
+			Console.WriteLine($"Calculated {results.Count} coefficients from {earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			Console.WriteLine(string.Empty);
 			foreach (var result in sortedResults)
-				Console.WriteLine($"{result.Feature}: {result.Coefficient:F3}");
+				Console.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({(decimal)result.Observations / earningsCount:P2})");
+
+			results = null;
+			_datasetLoader = null;
+			_cache = null;
+			_featureNames = null;
 		}
 
 		private float GetChange(float previous, float current)
@@ -143,16 +167,14 @@ namespace Fundamentalist.Correlation
 			return change;
 		}
 
-		private decimal GetSpearmanCoefficient(float[] x, float[] y, ref int[] yRanks)
+		private decimal GetSpearmanCoefficient(ConcurrentBag<Observation> observations)
 		{
-			if (x.Length != y.Length)
-				throw new Exception("Arrays must be same length");
-			decimal n = x.Length;
-			var xRanks = GetRanks(x);
-			if (yRanks == null)
-				yRanks = GetRanks(y);
+			var observationsArray = observations.ToArray();
+			decimal n = observations.Count;
+			var xRanks = GetRanks(observationsArray, o => o.X);
+			var yRanks = GetRanks(observationsArray, o => o.Y);
 			decimal squareSum = 0;
-			for (int i = 0; i < x.Length; i++)
+			for (int i = 0; i < xRanks.Length; i++)
 			{
 				decimal difference = xRanks[i] - yRanks[i];
 				squareSum += difference * difference;
@@ -161,10 +183,10 @@ namespace Fundamentalist.Correlation
 			return coefficient;
 		}
 
-		private int[] GetRanks(float[] input)
+		private int[] GetRanks(Observation[] observations, Func<Observation, float> select)
 		{
 			int i = 1;
-			var indexFloats = input.Select(x => new IndexFloat(x, i++)).OrderBy(x => x.Value);
+			var indexFloats = observations.Select(x => new IndexFloat(select(x), i++)).OrderBy(x => x.Value);
 			int[] output = indexFloats.Select(x => x.Index).ToArray();
 			return output;
 		}
