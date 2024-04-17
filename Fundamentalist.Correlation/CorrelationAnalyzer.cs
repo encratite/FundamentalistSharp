@@ -8,7 +8,9 @@ namespace Fundamentalist.Correlation
 	{
 		Single,
 		Addition,
-		Subtraction
+		Subtraction,
+		Division1,
+		Division2
 	}
 
 	internal class CorrelationAnalyzer
@@ -46,13 +48,13 @@ namespace Fundamentalist.Correlation
 
 		private void Analyze()
 		{
-			const int Features = 1000;
-			const int ForecastDays = 100;
-			const int Year = 2010;
+			const int Features = 500;
+			const int ForecastDays = 5;
 			const decimal MinimumObservationRatio = 0.01m;
-			const FeatureSynthesisMode Mode = FeatureSynthesisMode.Addition;
+			const FeatureSynthesisMode Mode = FeatureSynthesisMode.Division1;
+			DateTime fromDate = new DateTime(2018, 1, 1);
 
-			Console.WriteLine($"Calculating coefficients with a minimum observation ratio of {MinimumObservationRatio:P1} from {Year} to {DateTime.Now.Year} with a performance lookahead time of {ForecastDays} working days");
+			Console.WriteLine($"Calculating coefficients from {Features} features with a minimum observation ratio of {MinimumObservationRatio:P1} from {fromDate} to {DateTime.Now.Year} with a performance lookahead time of {ForecastDays} working days and mode \"{Mode}\"");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
@@ -65,7 +67,7 @@ namespace Fundamentalist.Correlation
 					{
 						if (
 							(Mode == FeatureSynthesisMode.Addition && i < j) ||
-							(Mode == FeatureSynthesisMode.Subtraction && i != j)
+							((Mode == FeatureSynthesisMode.Subtraction || Mode == FeatureSynthesisMode.Division1 || Mode == FeatureSynthesisMode.Division2) && i != j)
 						)
 						{
 							body(i, j, featureIndex);
@@ -93,6 +95,8 @@ namespace Fundamentalist.Correlation
 						name = $"{_featureNames[i]} + {_featureNames[j]}";
 					else if (Mode == FeatureSynthesisMode.Subtraction)
 						name = $"{_featureNames[i]} - {_featureNames[j]}";
+					else if (Mode == FeatureSynthesisMode.Division1 || Mode == FeatureSynthesisMode.Division2)
+						name = $"{_featureNames[i]} / {_featureNames[j]}";
 					dynamicFeatureNames.Add(name);
 				});
 				dynamicFeatureCount = dynamicFeatureNames.Count;
@@ -106,7 +110,13 @@ namespace Fundamentalist.Correlation
 
 			int earningsCount = 0;
 			foreach (var entry in _cache.Values)
-				earningsCount += entry.Earnings.Count;
+			{
+				foreach (var pair in entry.Earnings)
+				{
+					if (pair.Key >= fromDate)
+						earningsCount++;
+				}
+			}
 
 			Parallel.ForEach(_cache.Values, entry =>
 			{
@@ -115,7 +125,7 @@ namespace Fundamentalist.Correlation
 				foreach (var pair in entry.Earnings)
 				{
 					var now = pair.Key;
-					if (now.Year < Year)
+					if (now < fromDate)
 						continue;
 					var features = pair.Value;
 					var prices = entry.PriceData.Where(p => p.Key > now).ToList();
@@ -126,6 +136,7 @@ namespace Fundamentalist.Correlation
 						.Skip(ForecastDays - 1)
 						.Select(p => p.Value.Open)
 						.FirstOrDefault();
+
 					if (previousFeatures != null && previousPrice.HasValue)
 					{
 						float yCurrent = GetChange((float)previousPrice.Value, (float)price);
@@ -145,22 +156,37 @@ namespace Fundamentalist.Correlation
 						{
 							forEachDynamicFeature((i, j, featureIndex) =>
 							{
-								if (
-									previousFeatures[i] != 0 &&
-									features[i] != 0 &&
-									previousFeatures[j] != 0 &&
-									features[j] != 0
-								)
+								if (Mode == FeatureSynthesisMode.Division1)
 								{
-									float a = GetChange(previousFeatures[i], features[i]);
-									float b = GetChange(previousFeatures[j], features[j]);
-									float xCurrent = 0f;
-									if (Mode == FeatureSynthesisMode.Addition)
-										xCurrent = a + b;
-									else if (Mode == FeatureSynthesisMode.Subtraction)
-										xCurrent = a - b;
-									var observation = new Observation(xCurrent, yCurrent);
-									observations[featureIndex].Add(observation);
+									if (
+										features[i] != 0 &&
+										features[j] != 0
+									)
+									{
+										float xCurrent = GetChange(features[j], features[i]);
+										var observation = new Observation(xCurrent, yCurrent);
+										observations[featureIndex].Add(observation);
+									}
+								}
+								else
+								{
+									if (
+										previousFeatures[i] != 0 &&
+										features[i] != 0 &&
+										previousFeatures[j] != 0 &&
+										features[j] != 0
+									)
+									{
+										float xCurrent = 0f;
+										if (Mode == FeatureSynthesisMode.Addition)
+											xCurrent = GetChange(previousFeatures[i], features[i]) + GetChange(previousFeatures[j], features[j]);
+										else if (Mode == FeatureSynthesisMode.Subtraction)
+											xCurrent = GetChange(previousFeatures[i], features[i]) - GetChange(previousFeatures[j], features[j]);
+										else if (Mode == FeatureSynthesisMode.Division2)
+											xCurrent = GetChange(features[j], features[i]) / GetChange(previousFeatures[j], previousFeatures[i]);
+										var observation = new Observation(xCurrent, yCurrent);
+										observations[featureIndex].Add(observation);
+									}
 								}
 							});
 						}
