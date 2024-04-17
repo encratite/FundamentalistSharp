@@ -1,10 +1,16 @@
 ﻿using Fundamentalist.Common;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Reflection.Metadata.Ecma335;
 
 namespace Fundamentalist.Correlation
 {
+	enum FeatureSynthesisMode
+	{
+		Single,
+		Addition,
+		Subtraction
+	}
+
 	internal class CorrelationAnalyzer
 	{
 		private string _earningsPath;
@@ -41,31 +47,56 @@ namespace Fundamentalist.Correlation
 		private void Analyze()
 		{
 			const int Features = 1000;
-			const int ForecastDays = 5;
+			const int ForecastDays = 100;
 			const int Year = 2010;
+			const decimal MinimumObservationRatio = 0.01m;
+			const FeatureSynthesisMode Mode = FeatureSynthesisMode.Addition;
 
-			Console.WriteLine($"Calculating coefficients from {Year} to {DateTime.Now.Year}");
+			Console.WriteLine($"Calculating coefficients with a minimum observation ratio of {MinimumObservationRatio:P1} from {Year} to {DateTime.Now.Year} with a performance lookahead time of {ForecastDays} working days");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
-			/*
-			int dynamicFeatureCount = 0;
-			var newFeatureNames = new List<string>();
-			for (int i = 0; i < Features; i++)
+			var forEachDynamicFeature = (Action<int, int, int> body) =>
 			{
-				for (int j = 0; j < Features; j++)
+				int featureIndex = 0;
+				for (int i = 0; i < Features; i++)
 				{
-					if (i != j)
+					for (int j = 0; j < Features; j++)
 					{
-						string name = $"{_featureNames[i]} - {_featureNames[j]}";
-						newFeatureNames.Add(name);
-						dynamicFeatureCount++;
+						if (
+							(Mode == FeatureSynthesisMode.Addition && i < j) ||
+							(Mode == FeatureSynthesisMode.Subtraction && i != j)
+						)
+						{
+							body(i, j, featureIndex);
+							featureIndex++;
+						}
+
 					}
 				}
+			};
+
+			int dynamicFeatureCount;
+			List<string> dynamicFeatureNames;
+			if (Mode == FeatureSynthesisMode.Single)
+			{
+				dynamicFeatureCount = Features;
+				dynamicFeatureNames = _featureNames;
 			}
-			*/
-			int dynamicFeatureCount = Features;
-			var dynamicFeatureNames = _featureNames;
+			else
+			{
+				dynamicFeatureNames = new List<string>();
+				forEachDynamicFeature((i, j, featureIndex) =>
+				{
+					string name = null;
+					if (Mode == FeatureSynthesisMode.Addition)
+						name = $"{_featureNames[i]} + {_featureNames[j]}";
+					else if (Mode == FeatureSynthesisMode.Subtraction)
+						name = $"{_featureNames[i]} - {_featureNames[j]}";
+					dynamicFeatureNames.Add(name);
+				});
+				dynamicFeatureCount = dynamicFeatureNames.Count;
+			}
 
 			var observations = new ConcurrentBag<Observation>[dynamicFeatureCount];
 			for (int i = 0; i < observations.Length; i++)
@@ -98,30 +129,40 @@ namespace Fundamentalist.Correlation
 					if (previousFeatures != null && previousPrice.HasValue)
 					{
 						float yCurrent = GetChange((float)previousPrice.Value, (float)price);
-						/*
-						int offset = 0;
-						for (int i = 0; i < Features; i++)
+						if (Mode == FeatureSynthesisMode.Single)
 						{
-							for (int j = 0; j < Features; j++)
+							for (int i = 0; i < Features; i++)
 							{
-								if (i != j)
+								if (previousFeatures[i] != 0 && features[i] != 0)
 								{
-									float xCurrent = GetChange(previousFeatures[i], features[i]) - GetChange(previousFeatures[j], features[j]);
+									float xCurrent = GetChange(previousFeatures[i], features[i]);
 									var observation = new Observation(xCurrent, yCurrent);
-									observations[offset].Add(observation);
-									offset++;
+									observations[i].Add(observation);
 								}
 							}
 						}
-						*/
-						for (int i = 0; i < Features; i++)
+						else
 						{
-							if (previousFeatures[i] != 0 && features[i] != 0)
+							forEachDynamicFeature((i, j, featureIndex) =>
 							{
-								float xCurrent = GetChange(previousFeatures[i], features[i]);
-								var observation = new Observation(xCurrent, yCurrent);
-								observations[i].Add(observation);
-							}
+								if (
+									previousFeatures[i] != 0 &&
+									features[i] != 0 &&
+									previousFeatures[j] != 0 &&
+									features[j] != 0
+								)
+								{
+									float a = GetChange(previousFeatures[i], features[i]);
+									float b = GetChange(previousFeatures[j], features[j]);
+									float xCurrent = 0f;
+									if (Mode == FeatureSynthesisMode.Addition)
+										xCurrent = a + b;
+									else if (Mode == FeatureSynthesisMode.Subtraction)
+										xCurrent = a - b;
+									var observation = new Observation(xCurrent, yCurrent);
+									observations[featureIndex].Add(observation);
+								}
+							});
 						}
 					}
 					previousFeatures = features;
@@ -132,21 +173,21 @@ namespace Fundamentalist.Correlation
 			var results = new ConcurrentBag<CorrelationResult>();
 			Parallel.For(0, dynamicFeatureCount, i =>
 			{
-				string name = _featureNames[i];
-				var featureObservations = observations[i];
-				if (featureObservations.Count == 0)
+				string name = dynamicFeatureNames[i];
+				var featureObservations = observations[i].ToArray();
+				if ((decimal)featureObservations.Length / earningsCount < MinimumObservationRatio)
 					return;
 				decimal coefficient = GetSpearmanCoefficient(featureObservations);
-				var result = new CorrelationResult(name, coefficient, featureObservations.Count);
+				var result = new CorrelationResult(name, coefficient, featureObservations.Length);
 				results.Add(result);
 			});
-			var sortedResults = results.OrderByDescending(x => x.Coefficient);
+			var sortedResults = results.OrderByDescending(x => x.Coefficient).ToList();
 
 			stopwatch.Stop();
 			Console.WriteLine($"Calculated {results.Count} coefficients from {earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			Console.WriteLine(string.Empty);
 			foreach (var result in sortedResults)
-				Console.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({(decimal)result.Observations / earningsCount:P2})");
+				Console.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / earningsCount:P2})");
 
 			results = null;
 			_datasetLoader = null;
@@ -167,12 +208,11 @@ namespace Fundamentalist.Correlation
 			return change;
 		}
 
-		private decimal GetSpearmanCoefficient(ConcurrentBag<Observation> observations)
+		private decimal GetSpearmanCoefficient(Observation[] observations)
 		{
-			var observationsArray = observations.ToArray();
-			decimal n = observations.Count;
-			var xRanks = GetRanks(observationsArray, o => o.X);
-			var yRanks = GetRanks(observationsArray, o => o.Y);
+			decimal n = observations.Length;
+			var xRanks = GetRanks(observations, o => o.X);
+			var yRanks = GetRanks(observations, o => o.Y);
 			decimal squareSum = 0;
 			for (int i = 0; i < xRanks.Length; i++)
 			{
