@@ -4,17 +4,14 @@ using System.Diagnostics;
 
 namespace Fundamentalist.Correlation
 {
-	enum FeatureSynthesisMode
-	{
-		Single,
-		Addition,
-		Subtraction,
-		Division1,
-		Division2
-	}
-
 	internal class CorrelationAnalyzer
 	{
+		private int _features;
+		private decimal _minimumObservationRatio;
+		private DateTime _fromDate;
+		private int _forecastDays;
+		private string _outputDirectory;
+
 		private string _earningsPath;
 		private string _priceDataDirectory;
 
@@ -22,10 +19,23 @@ namespace Fundamentalist.Correlation
 		private Dictionary<string, TickerCacheEntry> _cache;
 		private List<string> _featureNames;
 
-		public CorrelationAnalyzer(string earningsPath, string priceDataDirectory)
+		public CorrelationAnalyzer(
+			string earningsPath,
+			string priceDataDirectory,
+			int features,
+			decimal minimumObservationRatio,
+			DateTime fromDate,
+			int forecastDays,
+			string outputDirectory
+		)
 		{
 			_earningsPath = earningsPath;
 			_priceDataDirectory = priceDataDirectory;
+			_features = features;
+			_minimumObservationRatio = minimumObservationRatio;
+			_fromDate = fromDate;
+			_forecastDays = forecastDays;
+			_outputDirectory = outputDirectory;
 		}
 
 		public void Run()
@@ -48,72 +58,26 @@ namespace Fundamentalist.Correlation
 
 		private void Analyze()
 		{
-			const int Features = 500;
-			const int ForecastDays = 5;
-			const decimal MinimumObservationRatio = 0.01m;
-			const FeatureSynthesisMode Mode = FeatureSynthesisMode.Division1;
-			DateTime fromDate = new DateTime(2018, 1, 1);
+			for (int i = 1; i <= _forecastDays; i++)
+				CalculateCoefficients(i);
+		}
 
-			Console.WriteLine($"Calculating coefficients from {Features} features with a minimum observation ratio of {MinimumObservationRatio:P1} from {fromDate} to {DateTime.Now.Year} with a performance lookahead time of {ForecastDays} working days and mode \"{Mode}\"");
+		private void CalculateCoefficients(int forecastDays)
+		{
+			Console.WriteLine($"Calculating coefficients from {_features} features with a minimum observation ratio of {_minimumObservationRatio:P1} from {_fromDate.ToShortDateString()} to {DateTime.Now.ToShortDateString()} with a performance lookahead time of {forecastDays} working days");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
-			var forEachDynamicFeature = (Action<int, int, int> body) =>
-			{
-				int featureIndex = 0;
-				for (int i = 0; i < Features; i++)
-				{
-					for (int j = 0; j < Features; j++)
-					{
-						if (
-							(Mode == FeatureSynthesisMode.Addition && i < j) ||
-							((Mode == FeatureSynthesisMode.Subtraction || Mode == FeatureSynthesisMode.Division1 || Mode == FeatureSynthesisMode.Division2) && i != j)
-						)
-						{
-							body(i, j, featureIndex);
-							featureIndex++;
-						}
-
-					}
-				}
-			};
-
-			int dynamicFeatureCount;
-			List<string> dynamicFeatureNames;
-			if (Mode == FeatureSynthesisMode.Single)
-			{
-				dynamicFeatureCount = Features;
-				dynamicFeatureNames = _featureNames;
-			}
-			else
-			{
-				dynamicFeatureNames = new List<string>();
-				forEachDynamicFeature((i, j, featureIndex) =>
-				{
-					string name = null;
-					if (Mode == FeatureSynthesisMode.Addition)
-						name = $"{_featureNames[i]} + {_featureNames[j]}";
-					else if (Mode == FeatureSynthesisMode.Subtraction)
-						name = $"{_featureNames[i]} - {_featureNames[j]}";
-					else if (Mode == FeatureSynthesisMode.Division1 || Mode == FeatureSynthesisMode.Division2)
-						name = $"{_featureNames[i]} / {_featureNames[j]}";
-					dynamicFeatureNames.Add(name);
-				});
-				dynamicFeatureCount = dynamicFeatureNames.Count;
-			}
-
-			var observations = new ConcurrentBag<Observation>[dynamicFeatureCount];
+			var observations = new ConcurrentBag<Observation>[_features];
 			for (int i = 0; i < observations.Length; i++)
 				observations[i] = new ConcurrentBag<Observation>();
-
-			_featureNames = dynamicFeatureNames;
 
 			int earningsCount = 0;
 			foreach (var entry in _cache.Values)
 			{
 				foreach (var pair in entry.Earnings)
 				{
-					if (pair.Key >= fromDate)
+					if (pair.Key >= _fromDate)
 						earningsCount++;
 				}
 			}
@@ -125,70 +89,29 @@ namespace Fundamentalist.Correlation
 				foreach (var pair in entry.Earnings)
 				{
 					var now = pair.Key;
-					if (now < fromDate)
+					if (now < _fromDate)
 						continue;
 					var features = pair.Value;
 					var prices = entry.PriceData.Where(p => p.Key > now).ToList();
-					if (prices.Count < ForecastDays)
+					if (prices.Count < forecastDays)
 						continue;
 					decimal price = prices
 						.OrderBy(p => p.Key)
-						.Skip(ForecastDays - 1)
+						.Skip(forecastDays - 1)
 						.Select(p => p.Value.Open)
 						.FirstOrDefault();
 
 					if (previousFeatures != null && previousPrice.HasValue)
 					{
 						float yCurrent = GetChange((float)previousPrice.Value, (float)price);
-						if (Mode == FeatureSynthesisMode.Single)
+						for (int i = 0; i < _features; i++)
 						{
-							for (int i = 0; i < Features; i++)
+							if (previousFeatures[i] != 0 && features[i] != 0)
 							{
-								if (previousFeatures[i] != 0 && features[i] != 0)
-								{
-									float xCurrent = GetChange(previousFeatures[i], features[i]);
-									var observation = new Observation(xCurrent, yCurrent);
-									observations[i].Add(observation);
-								}
+								float xCurrent = GetChange(previousFeatures[i], features[i]);
+								var observation = new Observation(xCurrent, yCurrent);
+								observations[i].Add(observation);
 							}
-						}
-						else
-						{
-							forEachDynamicFeature((i, j, featureIndex) =>
-							{
-								if (Mode == FeatureSynthesisMode.Division1)
-								{
-									if (
-										features[i] != 0 &&
-										features[j] != 0
-									)
-									{
-										float xCurrent = GetChange(features[j], features[i]);
-										var observation = new Observation(xCurrent, yCurrent);
-										observations[featureIndex].Add(observation);
-									}
-								}
-								else
-								{
-									if (
-										previousFeatures[i] != 0 &&
-										features[i] != 0 &&
-										previousFeatures[j] != 0 &&
-										features[j] != 0
-									)
-									{
-										float xCurrent = 0f;
-										if (Mode == FeatureSynthesisMode.Addition)
-											xCurrent = GetChange(previousFeatures[i], features[i]) + GetChange(previousFeatures[j], features[j]);
-										else if (Mode == FeatureSynthesisMode.Subtraction)
-											xCurrent = GetChange(previousFeatures[i], features[i]) - GetChange(previousFeatures[j], features[j]);
-										else if (Mode == FeatureSynthesisMode.Division2)
-											xCurrent = GetChange(features[j], features[i]) / GetChange(previousFeatures[j], previousFeatures[i]);
-										var observation = new Observation(xCurrent, yCurrent);
-										observations[featureIndex].Add(observation);
-									}
-								}
-							});
 						}
 					}
 					previousFeatures = features;
@@ -197,28 +120,33 @@ namespace Fundamentalist.Correlation
 			});
 
 			var results = new ConcurrentBag<CorrelationResult>();
-			Parallel.For(0, dynamicFeatureCount, i =>
+			Parallel.For(0, _features, i =>
 			{
-				string name = dynamicFeatureNames[i];
+				string name = _featureNames[i];
 				var featureObservations = observations[i].ToArray();
-				if ((decimal)featureObservations.Length / earningsCount < MinimumObservationRatio)
+				if ((decimal)featureObservations.Length / earningsCount < _minimumObservationRatio)
 					return;
 				decimal coefficient = GetSpearmanCoefficient(featureObservations);
 				var result = new CorrelationResult(name, coefficient, featureObservations.Length);
 				results.Add(result);
 			});
-			var sortedResults = results.OrderByDescending(x => x.Coefficient).ToList();
 
 			stopwatch.Stop();
 			Console.WriteLine($"Calculated {results.Count} coefficients from {earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
-			Console.WriteLine(string.Empty);
-			foreach (var result in sortedResults)
-				Console.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / earningsCount:P2})");
 
-			results = null;
-			_datasetLoader = null;
-			_cache = null;
-			_featureNames = null;
+			if (!Directory.Exists(_outputDirectory))
+				Directory.CreateDirectory(_outputDirectory);
+			foreach (var result in results)
+			{
+				string path = Path.Combine(_outputDirectory, $"{result.Feature}.csv");
+				bool newFile = !File.Exists(path);
+				using (var writer = new StreamWriter(path, true))
+				{
+					if (newFile)
+						writer.WriteLine("Day,Coefficient");
+					writer.WriteLine($"{forecastDays},{result.Coefficient}");
+				}
+			}
 		}
 
 		private float GetChange(float previous, float current)

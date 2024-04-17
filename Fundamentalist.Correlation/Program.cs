@@ -16,7 +16,22 @@ namespace Fundamentalist.Correlation
 			}
 			string earningsPath = arguments[0];
 			string priceDataDirectory = arguments[1];
-			var analyzer = new CorrelationAnalyzer(earningsPath, priceDataDirectory);
+
+			int features = 1000;
+			decimal minimumObservationRatio = 0.01m;
+			DateTime fromDate = new DateTime(2010, 1, 1);
+			int forecastDays = 100;
+			string logDirectory = "Data";
+
+			var analyzer = new CorrelationAnalyzer(
+				earningsPath,
+				priceDataDirectory,
+				features,
+				minimumObservationRatio,
+				fromDate,
+				forecastDays,
+				logDirectory
+			);
 			analyzer.Run();
 		}
 	}
