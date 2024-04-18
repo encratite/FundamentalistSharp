@@ -40,14 +40,149 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
+				// All of these are awful
+				/*
 				new Sdca(100, null, null),
+				// Best?
+				new Sdca(1000, null, null),
+				new Sdca(10000, null, null),
+				new Sdca(100, 0.01f, null),
+				new Sdca(1000, 0.01f, null),
+				new Sdca(100, null, 0.01f),
+				new Sdca(1000, null, 0.01f),
+				*/
+				// All of these are awful
+				/*
 				new Lbfgs(1e-7f, 1f, 1f),
+				new Lbfgs(1e-6f, 1f, 1f),
+				new Lbfgs(1e-5f, 1f, 1f),
+				new Lbfgs(1e-4f, 1f, 1f),
+				new Lbfgs(1e-7f, 1f, 0f),
+				new Lbfgs(1e-7f, 0.5f, 0f),
+				// Best?
+				new Lbfgs(1e-7f, 0.1f, 0f),
+				new Lbfgs(1e-7f, 0f, 1f),
+				new Lbfgs(1e-7f, 0f, 0.5f),
+				new Lbfgs(1e-7f, 0f, 0.1f),
+				*/
+				// Useless
+				/*
+				new Sgd(10, 0.01, 1e-6f),
 				new Sgd(100, 0.01, 1e-6f),
+				new Sgd(1000, 0.01, 1e-6f),
+				new Sgd(10000, 0.01, 1e-6f),
+				new Sgd(10000, 0.001, 1e-6f),
+				new Sgd(10000, 0.0001, 1e-6f),
+				*/
+				// There might be some hope for these with high iterations, manual learning rate only makes results worse
+				/*
 				new LightLgbm(100, null, null, null),
+				new LightLgbm(100, 1e-2, null, null),
+				new LightLgbm(100, 1e-3, null, null),
+				new LightLgbm(500, null, null, null),
+				new LightLgbm(1000, null, null, null),
+				new LightLgbm(1000, 1e-2, null, null),
+				new LightLgbm(1000, 1e-3, null, null),
+				new LightLgbm(10000, null, null, null),
+				new LightLgbm(10000, 1e-2, null, null),
+				new LightLgbm(10000, 1e-3, null, null),
+				*/
+				new LightLgbm(10000, null, null, null),
+				new LightLgbm(50000, null, null, null),
+				new LightLgbm(100000, null, null, null),
+				/*
+				new FastTree(10, 1000, 10, 2),
+				new FastTree(10, 2000, 10, 2),
+				new FastTree(10, 1000, 10, 5),
+				new FastTree(10, 2000, 10, 5),
+				new FastTree(10, 1000, 10, 10),
+				new FastTree(10, 2000, 10, 10),
+				*/
+				/*
+				new FastTree(10, 1000, 10, 1.1),
+				new FastTree(10, 1000, 10, 1.2),
+				new FastTree(10, 1000, 10, 1.3),
+				new FastTree(10, 1000, 10, 1.4),
+				new FastTree(10, 1000, 10, 1.5),
+				new FastTree(10, 1000, 10, 1.6),
+				// Best?
+				new FastTree(10, 1000, 10, 1.7),
+				new FastTree(10, 1000, 10, 1.8),
+				new FastTree(10, 1000, 10, 1.9),
+				new FastTree(10, 1000, 10, 2),
 				new FastTree(20, 100, 10, 0.2),
-				new FastForest(20, 100, 10),
+				new FastTree(30, 100, 10, 0.2),
+				new FastTree(100, 100, 10, 0.2),
+				new FastTree(20, 200, 10, 0.2),
+				new FastTree(20, 1000, 10, 0.2),
+				new FastTree(20, 100, 10, 0.3),
+				new FastTree(20, 100, 10, 1.0),
+				new FastTree(20, 100, 20, 0.2),
+				new FastTree(20, 100, 50, 0.2),
+				new FastTree(20, 100, 100, 0.2),
+				*/
+				new FastTree(10, 10000, 10, 0.5),
+				new FastTree(10, 100000, 10, 0.2),
+				new FastTree(10, 100000, 10, 0.1),
+				// Completely useless
+				// new FastForest(20, 100, 10),
+				// new FastForest(30, 100, 10),
+				/*
+				new FastForest(50, 100, 10),
+				new FastForest(100, 100, 10),
+				new FastForest(500, 100, 10),
+				new FastForest(500, 200, 10),
+				new FastForest(500, 500, 10),
+				new FastForest(20, 100, 15),
+				new FastForest(20, 100, 20),
+				new FastForest(20, 100, 50),
+				new FastForest(30, 100, 15),
+				new FastForest(20, 500, 10),
+				new FastForest(20, 1000, 10),
+				new FastForest(20, 10000, 10),
+				*/
+				// Completely useless
+				/*
 				new Gam(100, 255, 0.002),
-				new FieldAwareFactorizationMachine(100, 0.1f, 20)
+				new Gam(200, 255, 0.002),
+				new Gam(500, 255, 0.002),
+				new Gam(1000, 255, 0.002),
+				new Gam(100, 50, 0.002),
+				new Gam(100, 100, 0.002),
+				new Gam(100, 500, 0.002),
+				new Gam(100, 255, 0.005),
+				new Gam(100, 255, 0.01),
+				new Gam(100, 255, 0.1),
+				new Gam(1000, 255, 0.01),
+				new Gam(1000, 255, 0.02),
+				new Gam(1000, 255, 0.03),
+				new Gam(1000, 255, 0.04),
+				new Gam(1000, 255, 0.009),
+				new Gam(1000, 255, 0.008),
+				new Gam(1000, 255, 0.007),
+				new Gam(1000, 255, 0.006),
+				new Gam(1000, 255, 0.005),
+				*/
+				/*
+				new FieldAwareFactorizationMachine(100, 0.1f, 20),
+				new FieldAwareFactorizationMachine(200, 0.1f, 20),
+				new FieldAwareFactorizationMachine(500, 0.1f, 20),
+				new FieldAwareFactorizationMachine(1000, 0.1f, 20),
+				new FieldAwareFactorizationMachine(100, 0.1f, 30),
+				new FieldAwareFactorizationMachine(100, 0.1f, 50),
+				new FieldAwareFactorizationMachine(1000, 0.09f, 20),
+				new FieldAwareFactorizationMachine(1000, 0.08f, 20),
+				*/
+				/*
+				new FieldAwareFactorizationMachine(1000, 0.12f, 22),
+				new FieldAwareFactorizationMachine(1000, 0.15f, 25),
+				new FieldAwareFactorizationMachine(1000, 0.2f, 30),
+				new FieldAwareFactorizationMachine(1000, 0.25f, 35),
+				new FieldAwareFactorizationMachine(1000, 0.3f, 50),
+				*/
+				new FieldAwareFactorizationMachine(10000, 0.1f, 30),
+				new FieldAwareFactorizationMachine(50000, 0.1f, 30),
+				new FieldAwareFactorizationMachine(100000, 0.1f, 30),
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
@@ -107,7 +242,7 @@ namespace Fundamentalist.Trainer
 			if (_tickerCache == null)
 			{
 				Console.WriteLine("Loading datasets");
-				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.LoaderFeatures, PriceDataMinimum);
+				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.LoaderFeatures ?? _options.Features, PriceDataMinimum);
 				_tickerCache = _datasetLoader.Cache;
 				stopwatch.Stop();
 				Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -126,9 +261,14 @@ namespace Fundamentalist.Trainer
 			sortData(_testData);
 			stopwatch.Stop();
 			Console.WriteLine($"Removed {_datasetLoader.GoodTickers} tickers ({(decimal)_datasetLoader.BadTickers / (_datasetLoader.BadTickers + _datasetLoader.GoodTickers):P1}) due to insufficient price data");
-			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			Console.WriteLine($"Generated {_trainingData.Count} data points of training data ({GetTrueLabelRatio(_trainingData):P2} true labels) and {_testData.Count} data points of test data ({GetTrueLabelRatio(_testData):P2} true labels) in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
-		
+
+		private decimal GetTrueLabelRatio(List<DataPoint> dataPoints)
+		{
+			int trueLabelCount = dataPoints.Where(x => x.Label).Count();
+			return (decimal)trueLabelCount / dataPoints.Count;
+		}
 
 		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
 		{
@@ -214,6 +354,7 @@ namespace Fundamentalist.Trainer
 				Console.WriteLine($"  NegativePrecision: {metrics.NegativePrecision:P2}");
 				Console.WriteLine($"  PositiveRecall: {metrics.PositiveRecall:P2}");
 				Console.WriteLine($"  NegativeRecall: {metrics.NegativeRecall:P2}");
+				Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
 			}
 		}
 

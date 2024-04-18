@@ -39,12 +39,11 @@ namespace Fundamentalist.Trainer
 			*/
 			var options = new TrainerOptions
 			{
-				LoaderFeatures = 1000,
 				Features = 1000,
 				ForecastDays = 5,
 				TrainingDate = new DateTime(2020, 1, 1),
 				TestDate = new DateTime(2023, 1, 1),
-				MinimumGain = 0.05m
+				MinimumGain = 0.075m
 			};
 			trainer.Run(options, earningsPath, priceDataDirectory);
 		}

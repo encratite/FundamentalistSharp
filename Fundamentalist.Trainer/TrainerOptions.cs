@@ -4,7 +4,7 @@ namespace Fundamentalist.Trainer
 {
 	internal class TrainerOptions
 	{
-		public int LoaderFeatures { get; set; }
+		public int? LoaderFeatures { get; set; }
 		public int Features { get; set; }
 		public int ForecastDays { get; set; }
 		public DateTime TrainingDate { get; set; }
