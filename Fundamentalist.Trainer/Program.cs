@@ -32,18 +32,18 @@ namespace Fundamentalist.Trainer
 					ForecastDays = 5,
 					TrainingDate = new DateTime(2020, 1, 1),
 					TestDate = new DateTime(2023, 1, 1),
-					MinimumGain = 0.05m
+					MinimumGain = 0.075m
 				};
 				trainer.Run(options, earningsPath, priceDataDirectory);
 			}
 			*/
 			var options = new TrainerOptions
 			{
-				Features = 1000,
-				ForecastDays = 5,
+				Features = 400,
+				ForecastDays = 20,
 				TrainingDate = new DateTime(2020, 1, 1),
 				TestDate = new DateTime(2023, 1, 1),
-				MinimumGain = 0.075m
+				MinimumGain = 0.15m
 			};
 			trainer.Run(options, earningsPath, priceDataDirectory);
 		}

@@ -40,22 +40,17 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				new LdSvm(10000, 3),
-				new LdSvm(5000, 4),
-				new LdSvm(10000, 4),
-				new LdSvm(20000, 3),
-				new LdSvm(20000, 4),
-				new LdSvm(20000, 5),
+				new LightLgbm(5000, null, null, null),
+				new FastTree(20, 1000, 10, 0.2),
+				// new FieldAwareFactorizationMachine(500, 0.15f, 20)
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
 			{
 				TrainAndEvaluateModel(algorithm);
-				/*
-				backtest = new Backtest(_testData, _indexPriceData, minimumGain: _options.MinimumGain);
+				backtest = new Backtest(_testData, _indexPriceData);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
-				*/
 			}
 
 			if (backtest != null)
@@ -223,11 +218,11 @@ namespace Fundamentalist.Trainer
 
 		private void SetScores(IDataView predictions)
 		{
-			var scores = predictions.GetColumn<float>("Score").ToArray();
+			var predictedLabels = predictions.GetColumn<bool>("PredictedLabel").ToArray();
 			int i = 0;
 			foreach (var dataPoint in _testData)
 			{
-				dataPoint.Score = scores[i];
+				dataPoint.PredictedLabel = predictedLabels[i];
 				i++;
 			}
 		}

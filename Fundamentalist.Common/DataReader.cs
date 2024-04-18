@@ -82,6 +82,12 @@ namespace Fundamentalist.Common
 					Close = decimal.Parse(tokens[4]),
 					Volume = long.Parse(tokens[6]),
 				};
+				if (
+					priceData.Open == 0 ||
+					priceData.Close == 0 ||
+					priceData.Volume == 0
+				)
+					continue;
 				output.Add(priceData.Date, priceData);
 			}
 			return output;

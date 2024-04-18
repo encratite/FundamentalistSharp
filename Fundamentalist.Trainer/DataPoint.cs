@@ -19,6 +19,6 @@ namespace Fundamentalist.Trainer
 		public SortedList<DateTime, PriceData> PriceData { get; set; }
 
 		[NoColumn]
-		public float? Score { get; set; }
+		public bool? PredictedLabel { get; set; }
 	}
 }
