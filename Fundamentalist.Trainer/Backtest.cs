@@ -32,7 +32,7 @@ namespace Fundamentalist.Trainer
 			SortedList<DateTime, PriceData> indexPriceData,
 			decimal initialCapital = 100000.0m,
 			decimal investment = 30000.0m,
-			int holdDays = 28,
+			int holdDays = 7,
 			decimal minimumStockPrice = 1.0m,
 			decimal minimumVolume = 1e6m
 		)

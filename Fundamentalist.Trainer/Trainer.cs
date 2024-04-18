@@ -166,7 +166,7 @@ namespace Fundamentalist.Trainer
 
 				var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
 				var features = earningsFeatures.Take(_options.Features).Concat(priceDataFeatures);
-				bool label = gain > _options.MinimumGain;
+				bool label = _options.MinimumGain >= 0 ? gain > _options.MinimumGain : gain < _options.MinimumGain;
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
