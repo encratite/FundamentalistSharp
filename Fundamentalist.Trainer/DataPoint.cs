@@ -10,13 +10,10 @@ namespace Fundamentalist.Trainer
 		public bool Label { get; set; }
 
 		[NoColumn]
-		public string Ticker { get; set; }
+		public bool[] Labels { get; set; }
 
 		[NoColumn]
 		public DateTime Date { get; set; }
-
-		[NoColumn]
-		public SortedList<DateTime, PriceData> PriceData { get; set; }
 
 		[NoColumn]
 		public bool? PredictedLabel { get; set; }

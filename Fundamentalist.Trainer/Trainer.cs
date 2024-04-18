@@ -3,6 +3,8 @@ using Fundamentalist.Trainer.Algorithm;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace Fundamentalist.Trainer
 {
@@ -40,14 +42,27 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				new LightLgbm(5000, null, null, null),
-				new FastTree(20, 1000, 10, 0.2),
-				// new FieldAwareFactorizationMachine(500, 0.15f, 20)
+				/*
+				new Sdca(500, null, null),
+				new Lbfgs(1e-8f, 1f, 1f),
+				new Sgd(250, 0.01, 1e-6f),
+				new LightLgbm(1000, null, null, null),
+				new FastTree(20, 500, 10, 0.15),
+				new FastForest(20, 500, 20),
+				new Gam(500, 255, 0.002),
+				new FieldAwareFactorizationMachine(500, 0.1f, 20),
+				*/
+				new LightLgbm(10000, null, null, null),
+				new FastTree(30, 2000, 10, 0.1),
 			};
+			foreach (var algorithm in algorithms)
+				TrainAndEvaluateModel("AAPL", algorithm);
+			/*
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
 			{
-				TrainAndEvaluateModel(algorithm);
+				TrainAndEvaluateModel("AAPL", algorithm);
+
 				backtest = new Backtest(_testData, _indexPriceData);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
@@ -63,6 +78,7 @@ namespace Fundamentalist.Trainer
 				foreach (var entry in backtestLog)
 					Console.WriteLine($"  {entry.Description.PadRight(maxPadding)} {entry.Performance:#.00%}");
 			}
+			*/
 		}
 
 		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
@@ -107,25 +123,60 @@ namespace Fundamentalist.Trainer
 			}
 			Console.WriteLine("Generating data points");
 			stopwatch.Restart();
+			int index = 0;
+			foreach (var entry in _tickerCache)
+			{
+				entry.Value.Index = index;
+				index++;
+			}
+			int trainingIndex = 0;
+			int testIndex = 0;
+			var trainingIndexMap = new Dictionary<DateTime, int>();
+			var testIndexMap = new Dictionary<DateTime, int>();
+			foreach (var pair in _tickerCache["AAPL"].PriceData)
+			{
+				var date = pair.Key;
+				var priceData = pair.Value;
+				if (date >= _options.TrainingDate && date < _options.TestDate)
+				{
+					trainingIndexMap[date] = trainingIndex;
+					trainingIndex++;
+				}
+				else if (date >= _options.TestDate)
+				{
+					testIndexMap[date] = testIndex;
+					testIndex++;
+				}
+			}
+			GenerateEmptyDataPoints(trainingIndexMap, _trainingData);
+			GenerateEmptyDataPoints(testIndexMap, _testData);
 			Parallel.ForEach(_tickerCache, x =>
 			{
 				string ticker = x.Key;
 				var cacheEntry = x.Value;
-				GenerateDataPoints(ticker, cacheEntry, null, _options.TestDate, _trainingData);
-				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData);
+				GenerateDataPoints(ticker, cacheEntry, null, _options.TestDate, _trainingData, trainingIndexMap);
+				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData, testIndexMap);
 			});
 			var sortData = (List<DataPoint> data) => data.Sort((x, y) => x.Date.CompareTo(y.Date));
 			sortData(_trainingData);
 			sortData(_testData);
 			stopwatch.Stop();
 			Console.WriteLine($"Removed {_datasetLoader.GoodTickers} tickers ({(decimal)_datasetLoader.BadTickers / (_datasetLoader.BadTickers + _datasetLoader.GoodTickers):P1}) due to insufficient price data");
-			Console.WriteLine($"Generated {_trainingData.Count} data points of training data ({GetTrueLabelRatio(_trainingData):P2} true labels) and {_testData.Count} data points of test data ({GetTrueLabelRatio(_testData):P2} true labels) in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
-		private decimal GetTrueLabelRatio(List<DataPoint> dataPoints)
+		private void GenerateEmptyDataPoints(Dictionary<DateTime, int> indexMap, List<DataPoint> data)
 		{
-			int trueLabelCount = dataPoints.Where(x => x.Label).Count();
-			return (decimal)trueLabelCount / dataPoints.Count;
+			foreach (var date in indexMap.Keys)
+			{
+				var dataPoint = new DataPoint
+				{
+					Date = date,
+					Features = new float[_tickerCache.Count],
+					Labels = new bool[_tickerCache.Count]
+				};
+				data.Add(dataPoint);
+			}
 		}
 
 		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
@@ -135,54 +186,34 @@ namespace Fundamentalist.Trainer
 				(!to.HasValue || date.Value < to.Value);
 		}
 
-		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
+		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints, Dictionary<DateTime, int> indexMap)
 		{
-			var earnings = tickerCacheEntry.Earnings.Where(x => InRange(x.Key, from, to) && x.Key >= _options.TrainingDate).ToList();
-			var priceData = tickerCacheEntry.PriceData;
-			if (priceData == null)
-				return;
-
-			foreach (var x in earnings)
+			foreach (var pair in indexMap)
 			{
-				DateTime date = x.Key;
-				var earningsFeatures = x.Value;
-
-				DateTime currentDate = date;
-				DateTime futureDate = currentDate + TimeSpan.FromDays(_options.ForecastDays);
-
-				decimal? currentPrice = GetOpenPrice(currentDate, priceData);
-				if (!currentPrice.HasValue)
+				var date = pair.Key;
+				int index = pair.Value;
+				decimal? price = GetClosePrice(date, tickerCacheEntry.PriceData);
+				if (!price.HasValue)
 					continue;
+				var dataPoint = dataPoints[index];
+				dataPoint.Features[tickerCacheEntry.Index.Value] = (float)price.Value;
 
-				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
-				if (pastPrices.Length < PriceDataMinimum)
+				decimal? futurePrice = null;
+				int attempts = 0;
+				for (DateTime futureDate = date + TimeSpan.FromDays(_options.ForecastDays); attempts < 7 && !futurePrice.HasValue; futureDate += TimeSpan.FromDays(1), attempts++)
+					futurePrice = GetClosePrice(futureDate, tickerCacheEntry.PriceData);
+				if (!futurePrice.HasValue)
 					continue;
-
-				var futurePrices = priceData.Values.Where(x => x.Date > currentDate).ToList();
-				if (futurePrices.Count < _options.ForecastDays)
-					continue;
-				decimal futurePrice = futurePrices[_options.ForecastDays - 1].Close;
-				decimal gain = futurePrice / currentPrice.Value - 1.0m;
-
-				var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
-				var features = earningsFeatures.Take(_options.Features).Concat(priceDataFeatures);
-				bool label = _options.MinimumGain >= 0 ? gain > _options.MinimumGain : gain < _options.MinimumGain;
-				var dataPoint = new DataPoint
-				{
-					Features = features.ToArray(),
-					Label = label,
-					// Metadata for backtesting, not used by training
-					Ticker = ticker,
-					Date = currentDate,
-					PriceData = priceData
-				};
-				lock (dataPoints)
-					dataPoints.Add(dataPoint);
+				decimal gain = futurePrice.Value / price.Value - 1m;
+				bool label = gain > _options.MinimumGain;
+				dataPoint.Labels[tickerCacheEntry.Index.Value] = label;
 			}
 		}
 
-		private void TrainAndEvaluateModel(IAlgorithm algorithm)
+		private void TrainAndEvaluateModel(string ticker, IAlgorithm algorithm)
 		{
+			SetLabels(ticker, _trainingData);
+			SetLabels(ticker, _testData);
 			var mlContext = new MLContext();
 			const string FeatureName = "Features";
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
@@ -214,6 +245,15 @@ namespace Fundamentalist.Trainer
 				Console.WriteLine($"  NegativeRecall: {metrics.NegativeRecall:P2}");
 				Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
 			}
+		}
+
+		private void SetLabels(string ticker, List<DataPoint> dataPoints)
+		{
+			int index = _tickerCache[ticker].Index.Value;
+			Parallel.ForEach(dataPoints, dataPoint =>
+			{
+				dataPoint.Label = dataPoint.Labels[index];
+			});
 		}
 
 		private void SetScores(IDataView predictions)
