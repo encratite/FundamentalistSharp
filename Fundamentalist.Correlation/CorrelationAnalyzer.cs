@@ -9,6 +9,7 @@ namespace Fundamentalist.Correlation
 		private int _features;
 		private decimal _minimumObservationRatio;
 		private DateTime _fromDate;
+		private DateTime _toDate;
 		private int _forecastDays;
 		private string _outputDirectory;
 
@@ -25,6 +26,7 @@ namespace Fundamentalist.Correlation
 			int features,
 			decimal minimumObservationRatio,
 			DateTime fromDate,
+			DateTime toDate,
 			int forecastDays,
 			string outputDirectory
 		)
@@ -34,6 +36,7 @@ namespace Fundamentalist.Correlation
 			_features = features;
 			_minimumObservationRatio = minimumObservationRatio;
 			_fromDate = fromDate;
+			_toDate = toDate;
 			_forecastDays = forecastDays;
 			_outputDirectory = outputDirectory;
 		}
@@ -58,13 +61,18 @@ namespace Fundamentalist.Correlation
 
 		private void Analyze()
 		{
-			for (int i = 1; i <= _forecastDays; i++)
-				CalculateCoefficients(i);
+			if (_outputDirectory == null)
+				CalculateCoefficients(_forecastDays);
+			else
+			{
+				for (int i = 1; i <= _forecastDays; i++)
+					CalculateCoefficients(i);
+			}
 		}
 
 		private void CalculateCoefficients(int forecastDays)
 		{
-			Console.WriteLine($"Calculating coefficients from {_features} features with a minimum observation ratio of {_minimumObservationRatio:P1} from {_fromDate.ToShortDateString()} to {DateTime.Now.ToShortDateString()} with a performance lookahead time of {forecastDays} working days");
+			Console.WriteLine($"Calculating coefficients from {_features} features with a minimum observation ratio of {_minimumObservationRatio:P1} from {_fromDate.ToShortDateString()} to {_toDate.ToShortDateString()} with a performance lookahead time of {forecastDays} working days");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
@@ -77,10 +85,16 @@ namespace Fundamentalist.Correlation
 			{
 				foreach (var pair in entry.Earnings)
 				{
-					if (pair.Key >= _fromDate)
+					if (pair.Key >= _fromDate && pair.Key < _toDate)
 						earningsCount++;
 				}
 			}
+
+			for (int i = 0; i < _featureNames.Count; i++)
+			{
+				_featureNames[i] = $"{_featureNames[i]} ({i})";
+			}
+
 
 			Parallel.ForEach(_cache.Values, entry =>
 			{
@@ -89,7 +103,7 @@ namespace Fundamentalist.Correlation
 				foreach (var pair in entry.Earnings)
 				{
 					var now = pair.Key;
-					if (now < _fromDate)
+					if (now < _fromDate || now >= _toDate)
 						continue;
 					var features = pair.Value;
 					var prices = entry.PriceData.Where(p => p.Key > now).ToList();
@@ -134,17 +148,26 @@ namespace Fundamentalist.Correlation
 			stopwatch.Stop();
 			Console.WriteLine($"Calculated {results.Count} coefficients from {earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
 
-			if (!Directory.Exists(_outputDirectory))
-				Directory.CreateDirectory(_outputDirectory);
-			foreach (var result in results)
+			if (_outputDirectory == null)
 			{
-				string path = Path.Combine(_outputDirectory, $"{result.Feature}.csv");
-				bool newFile = !File.Exists(path);
-				using (var writer = new StreamWriter(path, true))
+				var sortedResults = results.OrderByDescending(x => x.Coefficient);
+				foreach (var result in sortedResults)
+					Console.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / earningsCount:P2})");
+			}
+			else
+			{
+				if (!Directory.Exists(_outputDirectory))
+					Directory.CreateDirectory(_outputDirectory);
+				foreach (var result in results)
 				{
-					if (newFile)
-						writer.WriteLine("Day,Coefficient");
-					writer.WriteLine($"{forecastDays},{result.Coefficient}");
+					string path = Path.Combine(_outputDirectory, $"{result.Feature}.csv");
+					bool newFile = !File.Exists(path);
+					using (var writer = new StreamWriter(path, true))
+					{
+						if (newFile)
+							writer.WriteLine("Day,Coefficient");
+						writer.WriteLine($"{forecastDays},{result.Coefficient}");
+					}
 				}
 			}
 		}

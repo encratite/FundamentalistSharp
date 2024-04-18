@@ -20,8 +20,10 @@ namespace Fundamentalist.Correlation
 			int features = 1000;
 			decimal minimumObservationRatio = 0.01m;
 			DateTime fromDate = new DateTime(2010, 1, 1);
-			int forecastDays = 100;
-			string logDirectory = "Data";
+			DateTime toDate = new DateTime(2023, 1, 1);
+			int forecastDays = 5;
+			// string logDirectory = "Data";
+			string logDirectory = null;
 
 			var analyzer = new CorrelationAnalyzer(
 				earningsPath,
@@ -29,6 +31,7 @@ namespace Fundamentalist.Correlation
 				features,
 				minimumObservationRatio,
 				fromDate,
+				toDate,
 				forecastDays,
 				logDirectory
 			);

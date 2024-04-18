@@ -40,12 +40,12 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				new Sdca(75, null, null),
-				new OnlineGradientDescent(200, 0.01f, 0.0f),
-				new LightGbmRegression(100, null, 1000),
+				new Sdca(100, null, null),
+				new OnlineGradientDescent(100, 0.01f, 0.0f),
+				new LightGbmRegression(100, null, null),
 				new FastTree(20, 100),
 				new FastTreeTweedie(20, 100, 10),
-				new FastForest(20, 1000, 10),
+				new FastForest(20, 100, 10),
 				new Gam(100, 255),
 			};
 			Backtest backtest = null;
@@ -54,7 +54,7 @@ namespace Fundamentalist.Trainer
 				string scoreName = $"{algorithm.Name}-{_options.ForecastDays}";
 				TrainAndEvaluateModel(algorithm);
 				// DumpScores(scoreName);
-				backtest = new Backtest(_testData, _indexPriceData);
+				backtest = new Backtest(_testData, _indexPriceData, minimumScore: _options.MinimumScore);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
 			}
@@ -106,7 +106,7 @@ namespace Fundamentalist.Trainer
 			if (_tickerCache == null)
 			{
 				Console.WriteLine("Loading datasets");
-				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.Features, PriceDataMinimum);
+				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.Features, PriceDataMinimum, _options.FeatureSelection);
 				_tickerCache = _datasetLoader.Cache;
 				stopwatch.Stop();
 				Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -174,9 +174,21 @@ namespace Fundamentalist.Trainer
 
 			float futurePrice = (float)futurePrices[_options.ForecastDays - 1].Close;
 			var earningsQuotientFeatures = new float[earningsFeatures.Length];
+			int signals = 0;
 			for (int i = 0; i < earningsFeatures.Length; i++)
-				earningsQuotientFeatures[i] = GetChange(previousEarningsFeatures[i], earningsFeatures[i]);
-			var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
+			{
+				float value = GetChange(previousEarningsFeatures[i], earningsFeatures[i]);
+				earningsQuotientFeatures[i] = value;
+				if (value != 0)
+					signals++;
+			}
+			if (signals < _options.MinimumSignals)
+				return;
+			float rsi = TechnicalIndicators.GetRelativeStrengthIndex(14, pastPrices);
+			var priceDataFeatures = new float[]
+			{
+				rsi
+			};
 			float label = GetChange((float)currentPrice, futurePrice);
 			var features = earningsQuotientFeatures.Concat(priceDataFeatures);
 			var dataPoint = new DataPoint

@@ -20,21 +20,33 @@ namespace Fundamentalist.Common
 			return output;
 		}
 
-		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit)
+		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit, HashSet<int> featureSelection)
 		{
 			var output = new ConcurrentBag<EarningsLine>();
 			var lines = File.ReadAllLines(csvPath);
 			Parallel.ForEach(lines.Skip(1), line =>
 			{
 				var tokens = Split(line);
-				var features = tokens.Skip(2);
+				var featureTokens = tokens.Skip(2);
 				if (featureLimit != null)
-					features = features.Take(featureLimit.Value);
+					featureTokens = featureTokens.Take(featureLimit.Value);
+				float[] features = featureTokens.Select(x => float.Parse(x)).ToArray();
+				if (featureSelection != null)
+				{
+					var filteredFeatures = new float[featureSelection.Count];
+					int destinationIndex = 0;
+					foreach (int sourceIndex in featureSelection)
+					{
+						filteredFeatures[destinationIndex] = features[sourceIndex];
+						destinationIndex++;
+					}
+					features = filteredFeatures;
+				}
 				var earningsLine = new EarningsLine()
 				{
 					Ticker = tokens[0],
 					Date = DateTime.Parse(tokens[1]),
-					Features = features.Select(x => float.Parse(x)).ToArray()
+					Features = features
 				};
 				output.Add(earningsLine);
 			});
