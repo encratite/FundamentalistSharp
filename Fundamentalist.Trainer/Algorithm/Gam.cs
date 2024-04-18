@@ -4,20 +4,24 @@ namespace Fundamentalist.Trainer.Algorithm
 {
 	internal class Gam : IAlgorithm
 	{
-		private int _numberOfIterations;
-		private int _maximumBinCountPerFeature;
+		int _numberOfIterations;
+		int _maximumBinCountPerFeature;
+		double _learningRate;
 
-		public string Name => $"Generalized Additive Model ({_numberOfIterations}, {_maximumBinCountPerFeature})";
+		public string Name => $"Gam ({_numberOfIterations}, {_maximumBinCountPerFeature}, {_learningRate})";
 
-		public Gam(int numberOfIterations, int maximumBinCountPerFeature)
+		public bool Calibrated => true;
+
+		public Gam(int numberOfIterations, int maximumBinCountPerFeature, double learningRate)
 		{
 			_numberOfIterations = numberOfIterations;
 			_maximumBinCountPerFeature = maximumBinCountPerFeature;
+			_learningRate = learningRate;
 		}
 
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
-			IEstimator<ITransformer> estimator = mlContext.Regression.Trainers.Gam(numberOfIterations: _numberOfIterations, maximumBinCountPerFeature: _maximumBinCountPerFeature);
+			IEstimator<ITransformer> estimator = mlContext.BinaryClassification.Trainers.Gam(numberOfIterations: _numberOfIterations, maximumBinCountPerFeature: _maximumBinCountPerFeature, learningRate: _learningRate);
 			return estimator;
 		}
 	}

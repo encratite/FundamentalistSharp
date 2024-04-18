@@ -41,22 +41,23 @@ namespace Fundamentalist.Trainer
 			var algorithms = new IAlgorithm[]
 			{
 				new Sdca(100, null, null),
-				new OnlineGradientDescent(100, 0.01f, 0.0f),
-				new LightGbmRegression(100, null, null),
-				new FastTree(20, 100),
-				new FastTreeTweedie(20, 100, 10),
+				new Lbfgs(1e-7f, 1f, 1f),
+				new Sgd(100, 0.01, 1e-6f),
+				new LightLgbm(100, null, null, null),
+				new FastTree(20, 100, 10, 0.2),
 				new FastForest(20, 100, 10),
-				new Gam(100, 255),
+				new Gam(100, 255, 0.002),
+				new FieldAwareFactorizationMachine(100, 0.1f, 20)
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
 			{
-				string scoreName = $"{algorithm.Name}-{_options.ForecastDays}";
 				TrainAndEvaluateModel(algorithm);
-				// DumpScores(scoreName);
+				/*
 				backtest = new Backtest(_testData, _indexPriceData, minimumGain: _options.MinimumGain);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
+				*/
 			}
 
 			if (backtest != null)
@@ -65,9 +66,9 @@ namespace Fundamentalist.Trainer
 				Console.WriteLine("Options used:");
 				_options.Print();
 				Console.WriteLine("Performance summary:");
-				int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length + 1;
+				int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length;
 				foreach (var entry in backtestLog)
-					Console.WriteLine($"  {(entry.Description + ":").PadRight(maxPadding)} {entry.Performance:#.00%}");
+					Console.WriteLine($"  {entry.Description.PadRight(maxPadding)} {entry.Performance:#.00%}");
 			}
 		}
 
@@ -106,7 +107,7 @@ namespace Fundamentalist.Trainer
 			if (_tickerCache == null)
 			{
 				Console.WriteLine("Loading datasets");
-				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.Features, PriceDataMinimum);
+				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.LoaderFeatures, PriceDataMinimum);
 				_tickerCache = _datasetLoader.Cache;
 				stopwatch.Stop();
 				Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -162,13 +163,12 @@ namespace Fundamentalist.Trainer
 				var futurePrices = priceData.Values.Where(x => x.Date > currentDate).ToList();
 				if (futurePrices.Count < _options.ForecastDays)
 					continue;
-				float futurePrice = (float)futurePrices[_options.ForecastDays - 1].Close;
-
-				var signFeatures = earningsFeatures.Take(_options.Features).Select(x => (float)Math.Sign(x));
+				decimal futurePrice = futurePrices[_options.ForecastDays - 1].Close;
+				decimal gain = futurePrice / currentPrice.Value - 1.0m;
 
 				var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
-				float label = futurePrice;
-				var features = signFeatures.Concat(priceDataFeatures);
+				var features = earningsFeatures.Take(_options.Features).Concat(priceDataFeatures);
+				bool label = gain > _options.MinimumGain;
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
@@ -181,21 +181,6 @@ namespace Fundamentalist.Trainer
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
 			}
-		}
-
-		private float GetChange(float previous, float current)
-		{
-			if (previous == 0 && current == 0)
-				return 0;
-			const float Maximum = 10.0f;
-			const float Epsilon = 1e-4f;
-			if (Math.Abs(previous) < Epsilon)
-				previous = Math.Sign(previous) * Epsilon;
-			float ratio = current / previous;
-			if (Math.Abs(ratio) > Maximum)
-				ratio = Math.Sign(ratio) * Maximum;
-			float change = ratio - 1.0f;
-			return change;
 		}
 
 		private void TrainAndEvaluateModel(IAlgorithm algorithm)
@@ -218,12 +203,17 @@ namespace Fundamentalist.Trainer
 			SetScores(predictions);
 			if (PrintEvaluation)
 			{
-				var metrics = mlContext.Regression.Evaluate(predictions);
-				// Console.WriteLine($"  LossFunction: {metrics.LossFunction:F3}");
-				Console.WriteLine($"  MeanAbsoluteError: {metrics.MeanAbsoluteError:F3}");
-				Console.WriteLine($"  MeanSquaredError: {metrics.MeanSquaredError:F3}");
-				Console.WriteLine($"  RootMeanSquaredError: {metrics.RootMeanSquaredError:F3}");
-				Console.WriteLine($"  RSquared: {metrics.RSquared:F3}");
+				BinaryClassificationMetrics metrics;
+				if (algorithm.Calibrated)
+					metrics = mlContext.BinaryClassification.Evaluate(predictions);
+				else
+					metrics = mlContext.BinaryClassification.EvaluateNonCalibrated(predictions);
+				Console.WriteLine($"  Accuracy: {metrics.Accuracy:P2}");
+				Console.WriteLine($"  F1Score: {metrics.F1Score:F3}");
+				Console.WriteLine($"  PositivePrecision: {metrics.PositivePrecision:P2}");
+				Console.WriteLine($"  NegativePrecision: {metrics.NegativePrecision:P2}");
+				Console.WriteLine($"  PositiveRecall: {metrics.PositiveRecall:P2}");
+				Console.WriteLine($"  NegativeRecall: {metrics.NegativeRecall:P2}");
 			}
 		}
 
@@ -235,22 +225,6 @@ namespace Fundamentalist.Trainer
 			{
 				dataPoint.Score = scores[i];
 				i++;
-			}
-		}
-
-		private void DumpScores(string name, string directory)
-		{
-			if (!Directory.Exists(directory))
-				Directory.CreateDirectory(directory);
-			string path = Path.Combine(directory, $"{name}.csv");
-			using (var writer = new StringWriter())
-			{
-				writer.WriteLine("Score,Performance");
-				foreach (var dataPoint in _testData)
-				{
-					writer.WriteLine($"{dataPoint.Score},{dataPoint.Label}");
-				}
-				File.WriteAllText(path, writer.ToString());
 			}
 		}
 	}

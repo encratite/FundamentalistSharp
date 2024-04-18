@@ -10,6 +10,8 @@ namespace Fundamentalist.Trainer.Algorithm
 
 		public string Name => $"FastForest ({_numberOfLeaves}, {_numberOfTrees}, {_minimumExampleCountPerLeaf})";
 
+		public bool Calibrated => false;
+
 		public FastForest(int numberOfLeaves, int numberOfTrees, int minimumExampleCountPerLeaf)
 		{
 			_numberOfLeaves = numberOfLeaves;
@@ -19,8 +21,7 @@ namespace Fundamentalist.Trainer.Algorithm
 
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
-
-			IEstimator<ITransformer> estimator = mlContext.Regression.Trainers.FastForest(numberOfLeaves: _numberOfLeaves, numberOfTrees: _numberOfTrees, minimumExampleCountPerLeaf: _minimumExampleCountPerLeaf);
+			IEstimator<ITransformer> estimator = mlContext.BinaryClassification.Trainers.FastForest(numberOfLeaves: _numberOfLeaves, numberOfTrees: _numberOfTrees, minimumExampleCountPerLeaf: _minimumExampleCountPerLeaf);
 			return estimator;
 		}
 	}

@@ -8,7 +8,9 @@ namespace Fundamentalist.Trainer.Algorithm
 		private float? _l1Regularization;
 		private float? _l2Regularization;
 
-		public string Name => $"Stochastic Dual Coordinated Ascent ({_maximumNumberOfIterations}, {_l1Regularization?.ToString() ?? "-"}, {_l2Regularization?.ToString() ?? "-"})";
+		public string Name => $"Sdca ({_maximumNumberOfIterations}, {_l1Regularization?.ToString() ?? "null"}, {_l2Regularization?.ToString() ?? "null"})";
+
+		public bool Calibrated => true;
 
 		public Sdca(int maximumNumberOfIterations, float? l1Regularization, float? l2Regularization)
 		{
@@ -21,7 +23,7 @@ namespace Fundamentalist.Trainer.Algorithm
 		{
 			IEstimator<ITransformer> estimator =
 				mlContext.Transforms.NormalizeMinMax("Features")
-				.Append(mlContext.Regression.Trainers.Sdca(maximumNumberOfIterations: _maximumNumberOfIterations, l1Regularization: _l1Regularization, l2Regularization: _l2Regularization));
+				.Append(mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(maximumNumberOfIterations: _maximumNumberOfIterations, l1Regularization: _l1Regularization, l2Regularization: _l2Regularization));
 			return estimator;
 		}
 	}

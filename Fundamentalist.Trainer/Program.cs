@@ -22,18 +22,31 @@ namespace Fundamentalist.Trainer
 		private static void Run(string earningsPath, string priceDataDirectory)
 		{
 			var trainer = new Trainer();
-			for (int features = 1000; features >= 0; features -= 100)
+			/*
+			for (int features = 100; features <= 500; features += 100)
 			{
 				var options = new TrainerOptions
 				{
+					LoaderFeatures = 500,
 					Features = features,
 					ForecastDays = 5,
 					TrainingDate = new DateTime(2020, 1, 1),
 					TestDate = new DateTime(2023, 1, 1),
-					MinimumGain = 0.01f
+					MinimumGain = 0.05m
 				};
 				trainer.Run(options, earningsPath, priceDataDirectory);
 			}
+			*/
+			var options = new TrainerOptions
+			{
+				LoaderFeatures = 1000,
+				Features = 1000,
+				ForecastDays = 5,
+				TrainingDate = new DateTime(2020, 1, 1),
+				TestDate = new DateTime(2023, 1, 1),
+				MinimumGain = 0.05m
+			};
+			trainer.Run(options, earningsPath, priceDataDirectory);
 		}
 	}
 }

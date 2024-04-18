@@ -4,11 +4,12 @@ namespace Fundamentalist.Trainer
 {
 	internal class TrainerOptions
 	{
+		public int LoaderFeatures { get; set; }
 		public int Features { get; set; }
 		public int ForecastDays { get; set; }
 		public DateTime TrainingDate { get; set; }
 		public DateTime TestDate { get; set; }
-		public float MinimumGain { get; set; }
+		public decimal MinimumGain { get; set; }
 
 		public void Print()
 		{

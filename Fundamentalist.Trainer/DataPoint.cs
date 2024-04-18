@@ -7,7 +7,7 @@ namespace Fundamentalist.Trainer
 	{
 		public float[] Features { get; set; }
 
-		public float Label { get; set; }
+		public bool Label { get; set; }
 
 		[NoColumn]
 		public string Ticker { get; set; }
