@@ -54,7 +54,7 @@ namespace Fundamentalist.Trainer
 				string scoreName = $"{algorithm.Name}-{_options.ForecastDays}";
 				TrainAndEvaluateModel(algorithm);
 				// DumpScores(scoreName);
-				backtest = new Backtest(_testData, _indexPriceData, minimumScore: _options.MinimumScore);
+				backtest = new Backtest(_testData, _indexPriceData, minimumGain: _options.MinimumGain);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
 			}
@@ -106,7 +106,7 @@ namespace Fundamentalist.Trainer
 			if (_tickerCache == null)
 			{
 				Console.WriteLine("Loading datasets");
-				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.Features, PriceDataMinimum, _options.FeatureSelection);
+				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.Features, PriceDataMinimum);
 				_tickerCache = _datasetLoader.Cache;
 				stopwatch.Stop();
 				Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -139,69 +139,48 @@ namespace Fundamentalist.Trainer
 		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
 		{
 			var earnings = tickerCacheEntry.Earnings.Where(x => InRange(x.Key, from, to) && x.Key >= _options.TrainingDate).ToList();
-			if (earnings.Count == 0)
-				return;
-
 			var priceData = tickerCacheEntry.PriceData;
 			if (priceData == null)
 				return;
 
-			float[] previousEarningsFeatures = earnings.First().Value;
-			foreach (var current in earnings.Skip(1))
+			foreach (var x in earnings)
 			{
-				DateTime date = current.Key;
-				var earningsFeatures = current.Value;
-				GenerateDataPoint(ticker, date, earningsFeatures, previousEarningsFeatures, priceData, dataPoints);
-				previousEarningsFeatures = earningsFeatures;
+				DateTime date = x.Key;
+				var earningsFeatures = x.Value;
+
+				DateTime currentDate = date;
+				DateTime futureDate = currentDate + TimeSpan.FromDays(_options.ForecastDays);
+
+				decimal? currentPrice = GetOpenPrice(currentDate, priceData);
+				if (!currentPrice.HasValue)
+					continue;
+
+				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
+				if (pastPrices.Length < PriceDataMinimum)
+					continue;
+
+				var futurePrices = priceData.Values.Where(x => x.Date > currentDate).ToList();
+				if (futurePrices.Count < _options.ForecastDays)
+					continue;
+				float futurePrice = (float)futurePrices[_options.ForecastDays - 1].Close;
+
+				var signFeatures = earningsFeatures.Take(_options.Features).Select(x => (float)Math.Sign(x));
+
+				var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
+				float label = futurePrice;
+				var features = signFeatures.Concat(priceDataFeatures);
+				var dataPoint = new DataPoint
+				{
+					Features = features.ToArray(),
+					Label = label,
+					// Metadata for backtesting, not used by training
+					Ticker = ticker,
+					Date = currentDate,
+					PriceData = priceData
+				};
+				lock (dataPoints)
+					dataPoints.Add(dataPoint);
 			}
-		}
-
-		private void GenerateDataPoint(string ticker, DateTime date, float[] earningsFeatures, float[] previousEarningsFeatures, SortedList<DateTime, PriceData> priceData, List<DataPoint> dataPoints)
-		{
-			DateTime currentDate = date;
-			DateTime futureDate = currentDate + TimeSpan.FromDays(_options.ForecastDays);
-			decimal? currentPrice = GetOpenPrice(currentDate, priceData);
-			if (!currentPrice.HasValue)
-				return;
-
-			var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
-			if (pastPrices.Length < PriceDataMinimum)
-				return;
-
-			var futurePrices = priceData.Values.Where(x => x.Date > currentDate).ToList();
-			if (futurePrices.Count < _options.ForecastDays)
-				return;
-
-			float futurePrice = (float)futurePrices[_options.ForecastDays - 1].Close;
-			var earningsQuotientFeatures = new float[earningsFeatures.Length];
-			int signals = 0;
-			for (int i = 0; i < earningsFeatures.Length; i++)
-			{
-				float value = GetChange(previousEarningsFeatures[i], earningsFeatures[i]);
-				earningsQuotientFeatures[i] = value;
-				if (value != 0)
-					signals++;
-			}
-			if (signals < _options.MinimumSignals)
-				return;
-			float rsi = TechnicalIndicators.GetRelativeStrengthIndex(14, pastPrices);
-			var priceDataFeatures = new float[]
-			{
-				rsi
-			};
-			float label = GetChange((float)currentPrice, futurePrice);
-			var features = earningsQuotientFeatures.Concat(priceDataFeatures);
-			var dataPoint = new DataPoint
-			{
-				Features = features.ToArray(),
-				Label = label,
-				// Metadata for backtesting, not used by training
-				Ticker = ticker,
-				Date = currentDate,
-				PriceData = priceData
-			};
-			lock (dataPoints)
-				dataPoints.Add(dataPoint);
 		}
 
 		private float GetChange(float previous, float current)

@@ -20,10 +20,10 @@ namespace Fundamentalist.Trainer
 		private decimal _initialCapital;
 		private decimal _investment;
 		private int _holdDays;
-		private float _minimumScore;
+		private float _minimumGain;
 		private decimal _minimumStockPrice;
 		private decimal _minimumVolume;
-		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.FinalOnly;
+		private BacktestLoggingLevel _loggingLevel = BacktestLoggingLevel.None;
 
 		public decimal IndexPerformance { get; set; }
 
@@ -32,10 +32,10 @@ namespace Fundamentalist.Trainer
 			List<DataPoint> testData,
 			SortedList<DateTime, PriceData> indexPriceData,
 			decimal initialCapital = 100000.0m,
-			decimal investment = 30000.0m,
+			decimal investment = 25000.0m,
 			int holdDays = 7,
-			float minimumScore = 0.0f,
-			decimal minimumStockPrice = 5.0m,
+			float minimumGain = 0.00f,
+			decimal minimumStockPrice = 1.0m,
 			decimal minimumVolume = 1e6m
 		)
 		{
@@ -45,7 +45,7 @@ namespace Fundamentalist.Trainer
 			_initialCapital = initialCapital;
 			_investment = investment;
 			_holdDays = holdDays;
-			_minimumScore = minimumScore;
+			_minimumGain = minimumGain;
 			_minimumStockPrice = minimumStockPrice;
 			_minimumVolume = minimumVolume;
 		}
@@ -94,7 +94,6 @@ namespace Fundamentalist.Trainer
 				}
 			};
 
-			int trades = 0;
 			DateTime finalTime = _testData.Last().Date + TimeSpan.FromDays(_holdDays);
 			for (; now < finalTime; now += TimeSpan.FromDays(1))
 			{
@@ -108,13 +107,16 @@ namespace Fundamentalist.Trainer
 				{
 					if (money < _investment)
 						break;
-					if (dataPoint.Score.Value == float.NaN || dataPoint.Score.Value < _minimumScore)
+					if (dataPoint.Score.Value == float.NaN)
 						continue;
 					decimal? currentPrice = Trainer.GetOpenPrice(now, dataPoint.PriceData);
 					if (currentPrice == null || currentPrice.Value < _minimumStockPrice)
 						continue;
 					decimal volume = dataPoint.PriceData[now].Volume * currentPrice.Value;
 					if (volume < _minimumVolume)
+						continue;
+					float predictedChange = dataPoint.Score.Value / (float)currentPrice.Value - 1.0f;
+					if (predictedChange < _minimumGain)
 						continue;
 
 					// Simulate spread
@@ -130,7 +132,6 @@ namespace Fundamentalist.Trainer
 					decimal fees = GetTransactionFees(count, currentPrice.Value, false);
 					money -= count * currentPrice.Value + fees;
 					feesPaid += fees;
-					trades++;
 					portfolio.Add(stock);
 				}
 			}
@@ -145,9 +146,9 @@ namespace Fundamentalist.Trainer
 
 			stopwatch.Stop();
 			decimal performance = money / _initialCapital - 1.0m;
-			log($"Finished backtest from {initialDate.ToShortDateString()} to {now.ToShortDateString()} with {money:C0} in the bank ({performance:+#.00%;-#.00%;+0.00%}) and {trades} trades made", BacktestLoggingLevel.FinalOnly);
-			// log($"  holdDays: {_holdDays}", BacktestLoggingLevel.FinalOnly);
-			// log($"  minimumGain: {_minimumGain}", BacktestLoggingLevel.FinalOnly);
+			log($"Finished backtest from {initialDate.ToShortDateString()} to {now.ToShortDateString()} with {money:C0} in the bank ({performance:+#.00%;-#.00%;+0.00%})", BacktestLoggingLevel.FinalOnly);
+			log($"  holdDays: {_holdDays}", BacktestLoggingLevel.FinalOnly);
+			log($"  minimumGain: {_minimumGain}", BacktestLoggingLevel.FinalOnly);
 			// log($"  feesPaid: {feesPaid:C}", BacktestLoggingLevel.FinalOnly);
 			return performance;
 		}

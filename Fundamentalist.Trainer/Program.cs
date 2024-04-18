@@ -22,56 +22,15 @@ namespace Fundamentalist.Trainer
 		private static void Run(string earningsPath, string priceDataDirectory)
 		{
 			var trainer = new Trainer();
-			for (float minimumScore = 0; minimumScore < 0.05f; minimumScore += 0.01f)
+			for (int features = 1000; features >= 0; features -= 100)
 			{
 				var options = new TrainerOptions
 				{
-					Features = 1000,
+					Features = features,
 					ForecastDays = 5,
 					TrainingDate = new DateTime(2020, 1, 1),
 					TestDate = new DateTime(2023, 1, 1),
-					FeatureSelection = new HashSet<int>
-					{
-						// Positive:
-						674,
-						923,
-						530,
-						277,
-						238,
-
-						689,
-						461,
-						476,
-						690,
-						571,
-
-						635,
-						891,
-						795,
-						837,
-						832,
-
-						// Negative:
-						398,
-						420,
-						937,
-						433,
-						873,
-
-						882,
-						667,
-						821,
-						810,
-						246,
-
-						579,
-						763,
-						460,
-						519,
-						842,
-					},
-					MinimumSignals = 2,
-					MinimumScore = minimumScore
+					MinimumGain = 0.01f
 				};
 				trainer.Run(options, earningsPath, priceDataDirectory);
 			}
