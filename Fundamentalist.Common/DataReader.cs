@@ -63,7 +63,7 @@ namespace Fundamentalist.Common
 			}
 		}
 
-		public static SortedList<DateTime, PriceData> GetPriceData(string ticker, string directory)
+		public static SortedList<DateTime, PriceData> GetPriceData(string ticker, string directory, DateTime? from = null, DateTime? to = null)
 		{
 			string csvPath = Path.Combine(directory, $"{ticker}.csv");
 			if (!File.Exists(csvPath))
@@ -89,7 +89,9 @@ namespace Fundamentalist.Common
 					priceData.High == 0 ||
 					priceData.Low == 0 ||
 					priceData.Close == 0 ||
-					priceData.Volume == 0
+					priceData.Volume == 0 ||
+					(from.HasValue && priceData.Date < from.Value) ||
+					(to.HasValue && priceData.Date >= to.Value)
 				)
 					continue;
 				output.Add(priceData.Date, priceData);
