@@ -79,11 +79,15 @@ namespace Fundamentalist.Common
 				{
 					Date = DateTime.Parse(tokens[0]),
 					Open = decimal.Parse(tokens[1]),
+					High = decimal.Parse(tokens[2]),
+					Low = decimal.Parse(tokens[3]),
 					Close = decimal.Parse(tokens[4]),
 					Volume = long.Parse(tokens[6]),
 				};
 				if (
 					priceData.Open == 0 ||
+					priceData.High == 0 ||
+					priceData.Low == 0 ||
 					priceData.Close == 0 ||
 					priceData.Volume == 0
 				)

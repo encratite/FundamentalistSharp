@@ -3,7 +3,6 @@ using Fundamentalist.Trainer.Algorithm;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace Fundamentalist.Trainer
@@ -49,36 +48,82 @@ namespace Fundamentalist.Trainer
 				new LightLgbm(1000, null, null, null),
 				new FastTree(20, 500, 10, 0.15),
 				new FastForest(20, 500, 20),
-				new Gam(500, 255, 0.002),
-				new FieldAwareFactorizationMachine(500, 0.1f, 20),
 				*/
+				// new Gam(10000, 255, 0.05),
+				// new Gam(10000, 255, 0.04),
+				// new Gam(10000, 255, 0.03),
+				// new Gam(10000, 255, 0.02),
+				// new Gam(10000, 255, 0.01),
+				// new FieldAwareFactorizationMachine(2000, 0.1f, 20),
+				// new LightLgbm(10000, null, null, null),
+				// new LightLgbm(25000, null, null, 20),
 				new LightLgbm(10000, null, null, null),
-				new FastTree(30, 2000, 10, 0.1),
+				new LightLgbm(10000, 1, null, null),
+				new LightLgbm(10000, 2, null, null),
+				new LightLgbm(10000, 1e-1, null, null),
+				new LightLgbm(10000, 1e-2, null, null),
+				new LightLgbm(10000, 1e-3, null, null),
+				/*
+				new LightLgbm(10000, null, null, 10),
+				new LightLgbm(10000, null, null, 20),
+				new LightLgbm(10000, null, null, 50),
+				*/
+				// new LightLgbm(10000, null, null, 100),
+				// new LightLgbm(10000, null, null, 8),
+				// Best
+				// new LightLgbm(10000, null, null, 10),
+				// new LightLgbm(10000, null, null, 12),
+				// new LightLgbm(10000, null, null, 14),
+				// new LightLgbm(10000, null, null, 500),
+				// new LightLgbm(15000, null, null, 100),
+				// new LightLgbm(20000, null, null, 1000),
+				// new FastTree(30, 2000, 10, 0.1),
+				// new FastTree(30, 1000, 10, 0.1),
 			};
-			foreach (var algorithm in algorithms)
-				TrainAndEvaluateModel("AAPL", algorithm);
-			/*
-			Backtest backtest = null;
-			foreach (var algorithm in algorithms)
-			{
-				TrainAndEvaluateModel("AAPL", algorithm);
 
-				backtest = new Backtest(_testData, _indexPriceData);
-				decimal performance = backtest.Run();
-				logPerformance(algorithm.Name, performance);
-			}
+			var random = new Random();
+			var evaluatedTickers = new HashSet<string>();
+			var performances = new Dictionary<IAlgorithm, AlgorithmPerformance>();
+			foreach (var algorithm in algorithms)
+				performances[algorithm] = new AlgorithmPerformance();
 
-			if (backtest != null)
+			var hasPriceData = (DateTime startDate, SortedList<DateTime, PriceData> priceData) =>
 			{
-				logPerformance("S&P 500", backtest.IndexPerformance);
-				Console.WriteLine("Options used:");
-				_options.Print();
-				Console.WriteLine("Performance summary:");
-				int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length;
-				foreach (var entry in backtestLog)
-					Console.WriteLine($"  {entry.Description.PadRight(maxPadding)} {entry.Performance:#.00%}");
+				for (DateTime i = startDate; i < startDate + TimeSpan.FromDays(10); i += TimeSpan.FromDays(1))
+				{
+					if (priceData.ContainsKey(i))
+						return true;
+				}
+				return false;
+			};
+			while (evaluatedTickers.Count < 10)
+			{
+				int index = random.Next(_tickerCache.Count);
+				string ticker = _tickerCache.Keys.ToList()[index];
+				if (evaluatedTickers.Contains(ticker))
+					continue;
+
+				var priceData = _tickerCache[ticker].PriceData;
+				bool hasTrainingData = hasPriceData(_options.TrainingDate, priceData);
+				bool hasTestData = hasPriceData(_options.TestDate, priceData);
+				if (!hasTrainingData || !hasTestData)
+				{
+					Console.WriteLine($"Skipping {ticker} due to lack of price data");
+					continue;
+				}
+
+				foreach (var algorithm in algorithms)
+				{
+					var algorithmPerformance = performances[algorithm];
+					TrainAndEvaluateModel(ticker, algorithm, algorithmPerformance);
+					var performanceList = algorithmPerformance.Performances;
+					decimal meanPerformance = performanceList.Sum() / performanceList.Count;
+					var f1ScoreList = algorithmPerformance.F1Scores;
+					double meanF1Score = f1ScoreList.Sum() / f1ScoreList.Count;
+					Console.WriteLine($"Total performance of algorithm \"{algorithm.Name}\" after {performanceList.Count} runs: {meanPerformance - 1:+#.00%;-#.00%;+0.00%} (F1 score {meanF1Score:F3})");
+				}
+				evaluatedTickers.Add(ticker);
 			}
-			*/
 		}
 
 		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
@@ -157,6 +202,20 @@ namespace Fundamentalist.Trainer
 				GenerateDataPoints(ticker, cacheEntry, null, _options.TestDate, _trainingData, trainingIndexMap);
 				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData, testIndexMap);
 			});
+			var setVolumeRatios = (List<DataPoint> dataPoints) =>
+			{
+				Parallel.ForEach(dataPoints, x =>
+				{
+					var volumeFeatures = x.VolumeFeatures;
+					var newVolumeFeatures = new float[volumeFeatures.Length];
+					newVolumeFeatures[0] = 1f;
+					for (int i = 1; i < volumeFeatures.Length; i++)
+						newVolumeFeatures[i] = volumeFeatures[i] / volumeFeatures[i - 1] - 1f;
+					x.VolumeFeatures = newVolumeFeatures;
+				});
+			};
+			setVolumeRatios(_trainingData);
+			setVolumeRatios(_testData);
 			var sortData = (List<DataPoint> data) => data.Sort((x, y) => x.Date.CompareTo(y.Date));
 			sortData(_trainingData);
 			sortData(_testData);
@@ -167,13 +226,17 @@ namespace Fundamentalist.Trainer
 
 		private void GenerateEmptyDataPoints(Dictionary<DateTime, int> indexMap, List<DataPoint> data)
 		{
+			int count = _tickerCache.Count;
 			foreach (var date in indexMap.Keys)
 			{
 				var dataPoint = new DataPoint
 				{
 					Date = date,
-					Features = new float[_tickerCache.Count],
-					Labels = new bool[_tickerCache.Count]
+					CloseOpenFeatures = new float[count],
+					HighLowFeatures = new float[count],
+					VolumeFeatures = new float[count],
+					Labels = new bool[count],
+					PerformanceRatios = new decimal[count]
 				};
 				data.Add(dataPoint);
 			}
@@ -188,41 +251,56 @@ namespace Fundamentalist.Trainer
 
 		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints, Dictionary<DateTime, int> indexMap)
 		{
+			var prices = tickerCacheEntry.PriceData;
 			foreach (var pair in indexMap)
 			{
 				var date = pair.Key;
 				int index = pair.Value;
-				decimal? price = GetClosePrice(date, tickerCacheEntry.PriceData);
-				if (!price.HasValue)
+				PriceData priceData;
+				if (!prices.TryGetValue(date, out priceData))
 					continue;
 				var dataPoint = dataPoints[index];
-				dataPoint.Features[tickerCacheEntry.Index.Value] = (float)price.Value;
+				int featureIndex = tickerCacheEntry.Index.Value;
+				dataPoint.CloseOpenFeatures[featureIndex] = (float)(priceData.Close / priceData.Open - 1);
+				dataPoint.HighLowFeatures[featureIndex] = (float)(priceData.High / priceData.Low - 1);
+				dataPoint.VolumeFeatures[featureIndex] = (float)priceData.Volume;
 
 				decimal? futurePrice = null;
 				int attempts = 0;
 				for (DateTime futureDate = date + TimeSpan.FromDays(_options.ForecastDays); attempts < 7 && !futurePrice.HasValue; futureDate += TimeSpan.FromDays(1), attempts++)
-					futurePrice = GetClosePrice(futureDate, tickerCacheEntry.PriceData);
+					futurePrice = GetClosePrice(futureDate, prices);
 				if (!futurePrice.HasValue)
 					continue;
-				decimal gain = futurePrice.Value / price.Value - 1m;
+				decimal ratio = futurePrice.Value / priceData.Close;
+				decimal gain = ratio - 1m;
 				bool label = gain > _options.MinimumGain;
-				dataPoint.Labels[tickerCacheEntry.Index.Value] = label;
+				int labelIndex = tickerCacheEntry.Index.Value;
+				dataPoint.Labels[labelIndex] = label;
+				dataPoint.PerformanceRatios[labelIndex] = ratio;
 			}
 		}
 
-		private void TrainAndEvaluateModel(string ticker, IAlgorithm algorithm)
+		private void TrainAndEvaluateModel(string ticker, IAlgorithm algorithm, AlgorithmPerformance algorithmPerformance)
 		{
+			Console.WriteLine("==========================");
+			Console.WriteLine($"Evaluating ticker {ticker}");
+			Console.WriteLine("==========================");
 			SetLabels(ticker, _trainingData);
 			SetLabels(ticker, _testData);
 			var mlContext = new MLContext();
 			const string FeatureName = "Features";
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
-			int featureCount = _trainingData.First().Features.Length;
-			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
+			int featureCount = _trainingData.First().CloseOpenFeatures.Length;
+			schema["CloseOpenFeatures"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
+			schema["HighLowFeatures"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
+			schema["VolumeFeatures"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
 			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
-			var estimator = algorithm.GetEstimator(mlContext);
-			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {featureCount} features each");
+			var algorithmEstimator = algorithm.GetEstimator(mlContext);
+			var estimator =
+				mlContext.Transforms.Concatenate("Features", "CloseOpenFeatures", "HighLowFeatures", "VolumeFeatures")
+				.Append(algorithmEstimator);
+			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {3 * featureCount} features each");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			var model = estimator.Fit(trainingData);
@@ -230,13 +308,13 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
+			BinaryClassificationMetrics metrics;
+			if (algorithm.Calibrated)
+				metrics = mlContext.BinaryClassification.Evaluate(predictions);
+			else
+				metrics = mlContext.BinaryClassification.EvaluateNonCalibrated(predictions);
 			if (PrintEvaluation)
 			{
-				BinaryClassificationMetrics metrics;
-				if (algorithm.Calibrated)
-					metrics = mlContext.BinaryClassification.Evaluate(predictions);
-				else
-					metrics = mlContext.BinaryClassification.EvaluateNonCalibrated(predictions);
 				Console.WriteLine($"  Accuracy: {metrics.Accuracy:P2}");
 				Console.WriteLine($"  F1Score: {metrics.F1Score:F3}");
 				Console.WriteLine($"  PositivePrecision: {metrics.PositivePrecision:P2}");
@@ -245,6 +323,17 @@ namespace Fundamentalist.Trainer
 				Console.WriteLine($"  NegativeRecall: {metrics.NegativeRecall:P2}");
 				Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
 			}
+			decimal performance = 1m;
+			const decimal Spread = 0.004m;
+			int ratioIndex = _tickerCache[ticker].Index.Value;
+			foreach (var dataPoint in _testData)
+			{
+				if (dataPoint.PredictedLabel.Value)
+					performance *= dataPoint.PerformanceRatios[ratioIndex] - Spread;
+			}
+			Console.WriteLine($"Performance: {performance - 1m:P2}");
+			algorithmPerformance.Performances.Add(performance);
+			algorithmPerformance.F1Scores.Add(metrics.F1Score);
 		}
 
 		private void SetLabels(string ticker, List<DataPoint> dataPoints)
