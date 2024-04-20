@@ -19,6 +19,7 @@ namespace Fundamentalist.Correlation
 		private DatasetLoader _datasetLoader = new DatasetLoader();
 		private Dictionary<string, TickerCacheEntry> _cache;
 		private List<string> _featureNames;
+		private SortedList<DateTime, PriceData> _indexData;
 
 		public CorrelationAnalyzer(
 			string earningsPath,
@@ -55,6 +56,7 @@ namespace Fundamentalist.Correlation
 			_datasetLoader.Load(_earningsPath, _priceDataDirectory);
 			_cache = _datasetLoader.Cache;
 			_featureNames = DataReader.GetFeatureNames(_earningsPath);
+			_indexData = DataReader.GetPriceData(DataReader.IndexTicker, _priceDataDirectory);
 			stopwatch.Stop();
 			Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
@@ -99,25 +101,25 @@ namespace Fundamentalist.Correlation
 			Parallel.ForEach(_cache.Values, entry =>
 			{
 				float[] previousFeatures = null;
-				decimal? previousPrice = null;
 				foreach (var pair in entry.Earnings)
 				{
 					var now = pair.Key;
 					if (now < _fromDate || now >= _toDate)
 						continue;
 					var features = pair.Value;
-					var prices = entry.PriceData.Where(p => p.Key > now).ToList();
-					if (prices.Count < forecastDays)
-						continue;
-					decimal price = prices
-						.OrderBy(p => p.Key)
-						.Skip(forecastDays - 1)
-						.Select(p => p.Value.Open)
-						.FirstOrDefault();
-
-					if (previousFeatures != null && previousPrice.HasValue)
+					if (previousFeatures != null)
 					{
-						float yCurrent = GetChange((float)previousPrice.Value, (float)price);
+						decimal? lastPrice = GetLastPrice(now, entry.PriceData);
+						decimal? futurePrice = GetFuturePrice(now, forecastDays, entry.PriceData);
+						if (!lastPrice.HasValue || !futurePrice.HasValue)
+							continue;
+						decimal? lastIndexPrice = GetLastPrice(now, _indexData);
+						decimal? futureIndexPrice = GetFuturePrice(now, forecastDays, _indexData);
+						if (!lastIndexPrice.HasValue || !futureIndexPrice.HasValue)
+							continue;
+						float change = GetChange((float)lastPrice.Value, (float)futurePrice.Value);
+						float indexChange = GetChange((float)lastIndexPrice.Value, (float)futureIndexPrice.Value);
+						float yCurrent = change - indexChange;
 						for (int i = 0; i < _features; i++)
 						{
 							if (previousFeatures[i] != 0 && features[i] != 0)
@@ -129,7 +131,6 @@ namespace Fundamentalist.Correlation
 						}
 					}
 					previousFeatures = features;
-					previousPrice = price;
 				}
 			});
 
@@ -172,15 +173,35 @@ namespace Fundamentalist.Correlation
 			}
 		}
 
+		private static decimal? GetLastPrice(DateTime now, SortedList<DateTime, PriceData> priceData)
+		{
+			var prices = priceData.Where(p => p.Key <= now).ToList();
+			decimal price = prices
+				.OrderByDescending(p => p.Key)
+				.Select(p => p.Value.Open)
+				.FirstOrDefault();
+			return price;
+		}
+
+		private static decimal? GetFuturePrice(DateTime now, int forecastDays, SortedList<DateTime, PriceData> priceData)
+		{
+			var prices = priceData.Where(p => p.Key > now).ToList();
+			if (prices.Count < forecastDays)
+				return null;
+			decimal price = prices
+				.OrderBy(p => p.Key)
+				.Skip(forecastDays - 1)
+				.Select(p => p.Value.Open)
+				.FirstOrDefault();
+			return price;
+		}
+
 		private float GetChange(float previous, float current)
 		{
-			const float Maximum = 10.0f;
 			const float Epsilon = 1e-4f;
 			if (Math.Abs(previous) < Epsilon)
 				previous = Math.Sign(previous) * Epsilon;
 			float ratio = current / previous;
-			if (Math.Abs(ratio) > Maximum)
-				ratio = Math.Sign(ratio) * Maximum;
 			float change = ratio - 1.0f;
 			return change;
 		}
