@@ -9,7 +9,6 @@ namespace Fundamentalist.Xblr
 	internal class XbrlParser
 	{
 		private const int MinimumFacts = 20;
-		private const int FeatureCount = 1000;
 
 		private Dictionary<string, int> _factFrequenies;
 		private ConcurrentBag<CompanyEarnings> _companyEarnings;
@@ -18,9 +17,11 @@ namespace Fundamentalist.Xblr
 		private Stopwatch _stopwatch;
 		private Dictionary<int, string> _tickers;
 		private int _tickerErrors;
+		private int _featureCount;
 
-		public void Run(string xbrlDirectory, string tickerPath, string frequencyPath, string outputPath)
+		public void Run(string xbrlDirectory, string tickerPath, string frequencyPath, string outputPath, int featureCount)
 		{
+			_featureCount = featureCount;
 			_stopwatch = new Stopwatch();
 			_stopwatch.Start();
 			Console.WriteLine($"Reading tickers from {tickerPath}");
@@ -50,7 +51,7 @@ namespace Fundamentalist.Xblr
 			}
 			var featureIndices = new Dictionary<string, int>();
 			int index = 0;
-			var selectedFacts = frequencies.Take(FeatureCount).Select(x => x.Key).ToList();
+			var selectedFacts = frequencies.Take(_featureCount).Select(x => x.Key).ToList();
 			foreach (string name in selectedFacts)
 			{
 				featureIndices[name] = index;
@@ -82,7 +83,7 @@ namespace Fundamentalist.Xblr
 							earnings.Ticker,
 							date.ToShortDateString(),
 						};
-						var features = new decimal[FeatureCount];
+						var features = new decimal[_featureCount];
 						foreach (var fact in facts)
 						{
 							string name = fact.Key;

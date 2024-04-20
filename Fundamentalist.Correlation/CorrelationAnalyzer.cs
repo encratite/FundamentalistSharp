@@ -11,15 +11,20 @@ namespace Fundamentalist.Correlation
 		private DateTime _fromDate;
 		private DateTime _toDate;
 		private int _forecastDays;
-		private string _outputDirectory;
+		private int _earningsCount;
+		private int _minimumAppearanceCount = 100;
 
 		private string _earningsPath;
 		private string _priceDataDirectory;
+		string _correlationOutput;
+		string _appearanceOutput;
+		string _disappearanceOutput;
 
 		private DatasetLoader _datasetLoader = new DatasetLoader();
 		private Dictionary<string, TickerCacheEntry> _cache;
 		private List<string> _featureNames;
 		private SortedList<DateTime, PriceData> _indexData;
+		private FeatureStats[] _stats;
 
 		public CorrelationAnalyzer(
 			string earningsPath,
@@ -29,7 +34,9 @@ namespace Fundamentalist.Correlation
 			DateTime fromDate,
 			DateTime toDate,
 			int forecastDays,
-			string outputDirectory
+			string correlationOutput,
+			string appearanceOutput,
+			string disappearanceOutput
 		)
 		{
 			_earningsPath = earningsPath;
@@ -39,7 +46,9 @@ namespace Fundamentalist.Correlation
 			_fromDate = fromDate;
 			_toDate = toDate;
 			_forecastDays = forecastDays;
-			_outputDirectory = outputDirectory;
+			_correlationOutput = correlationOutput;
+			_appearanceOutput = appearanceOutput;
+			_disappearanceOutput = disappearanceOutput;
 		}
 
 		public void Run()
@@ -53,7 +62,7 @@ namespace Fundamentalist.Correlation
 			Console.WriteLine("Loading datasets");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			_datasetLoader.Load(_earningsPath, _priceDataDirectory);
+			_datasetLoader.Load(_earningsPath, _priceDataDirectory, _features);
 			_cache = _datasetLoader.Cache;
 			_featureNames = DataReader.GetFeatureNames(_earningsPath);
 			_indexData = DataReader.GetPriceData(DataReader.IndexTicker, _priceDataDirectory);
@@ -63,41 +72,60 @@ namespace Fundamentalist.Correlation
 
 		private void Analyze()
 		{
-			if (_outputDirectory == null)
-				CalculateCoefficients(_forecastDays);
-			else
-			{
-				for (int i = 1; i <= _forecastDays; i++)
-					CalculateCoefficients(i);
-			}
+			CalculateCoefficients();
 		}
 
-		private void CalculateCoefficients(int forecastDays)
+		private void CalculateCoefficients()
 		{
-			Console.WriteLine($"Calculating coefficients from {_features} features with a minimum observation ratio of {_minimumObservationRatio:P1} from {_fromDate.ToShortDateString()} to {_toDate.ToShortDateString()} with a performance lookahead time of {forecastDays} working days");
+			Console.WriteLine($"Calculating coefficients from {_features} features with a minimum observation ratio of {_minimumObservationRatio:P1} from {_fromDate.ToShortDateString()} to {_toDate.ToShortDateString()} with a performance lookahead time of {_forecastDays} working days");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
-			var observations = new ConcurrentBag<Observation>[_features];
-			for (int i = 0; i < observations.Length; i++)
-				observations[i] = new ConcurrentBag<Observation>();
+			_stats = new FeatureStats[_features];
+			for (int i = 0; i < _stats.Length; i++)
+				_stats[i] = new FeatureStats($"{_featureNames[i]} ({i})");
 
-			int earningsCount = 0;
+			_earningsCount = 0;
 			foreach (var entry in _cache.Values)
 			{
 				foreach (var pair in entry.Earnings)
 				{
 					if (pair.Key >= _fromDate && pair.Key < _toDate)
-						earningsCount++;
+						_earningsCount++;
 				}
 			}
 
-			for (int i = 0; i < _featureNames.Count; i++)
+			GatherStats();
+			foreach (var stats in _stats)
+				stats.SetGains();
+			var correlationResults = GetCorrelationResults(_earningsCount);
+
+			stopwatch.Stop();
+			Console.WriteLine($"Calculated {correlationResults.Count} coefficients from {_earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
+
+			using (var writer = new StreamWriter(_correlationOutput))
 			{
-				_featureNames[i] = $"{_featureNames[i]} ({i})";
+				var sortedResults = correlationResults.OrderByDescending(x => x.Coefficient);
+				foreach (var result in sortedResults)
+					writer.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / _earningsCount:P2})");
 			}
 
+			LogAppearanceGains(_appearanceOutput, (x) => x.MeanAppearanceGain, (x) => x.AppearanceGains);
+			LogAppearanceGains(_disappearanceOutput, (x) => x.MeanDisappearanceGain, (x) => x.DisappearanceGains);
+		}
 
+		private void LogAppearanceGains(string path, Func<FeatureStats, float?> meanSelector, Func<FeatureStats, ConcurrentBag<float>> bagSelector)
+		{
+			using (var writer = new StreamWriter(path))
+			{
+				var sortedResults = _stats.Where(x => meanSelector(x).HasValue && bagSelector(x).Count > _minimumAppearanceCount).OrderByDescending(meanSelector);
+				foreach (var result in sortedResults)
+					writer.WriteLine($"{result.Name}: {meanSelector(result):F3} ({bagSelector(result).Count})");
+			}
+		}
+
+		private void GatherStats()
+		{
 			Parallel.ForEach(_cache.Values, entry =>
 			{
 				float[] previousFeatures = null;
@@ -110,67 +138,53 @@ namespace Fundamentalist.Correlation
 					if (previousFeatures != null)
 					{
 						decimal? lastPrice = GetLastPrice(now, entry.PriceData);
-						decimal? futurePrice = GetFuturePrice(now, forecastDays, entry.PriceData);
+						decimal? futurePrice = GetFuturePrice(now, _forecastDays, entry.PriceData);
 						if (!lastPrice.HasValue || !futurePrice.HasValue)
 							continue;
 						decimal? lastIndexPrice = GetLastPrice(now, _indexData);
-						decimal? futureIndexPrice = GetFuturePrice(now, forecastDays, _indexData);
+						decimal? futureIndexPrice = GetFuturePrice(now, _forecastDays, _indexData);
 						if (!lastIndexPrice.HasValue || !futureIndexPrice.HasValue)
 							continue;
 						float change = GetChange((float)lastPrice.Value, (float)futurePrice.Value);
 						float indexChange = GetChange((float)lastIndexPrice.Value, (float)futureIndexPrice.Value);
-						float yCurrent = change - indexChange;
+						float adjustedChange = change - indexChange;
 						for (int i = 0; i < _features; i++)
 						{
-							if (previousFeatures[i] != 0 && features[i] != 0)
+							bool hasPrevious = previousFeatures[i] != 0;
+							bool hasCurrent = features[i] != 0;
+							var featureStats = _stats[i];
+							if (hasPrevious && hasCurrent)
 							{
 								float xCurrent = GetChange(previousFeatures[i], features[i]);
-								var observation = new Observation(xCurrent, yCurrent);
-								observations[i].Add(observation);
+								var observation = new Observation(xCurrent, adjustedChange);
+								featureStats.Observations.Add(observation);
 							}
+							else if (!hasPrevious && hasCurrent)
+								featureStats.AppearanceGains.Add(adjustedChange);
+							else if (hasPrevious && !hasCurrent)
+								featureStats.DisappearanceGains.Add(adjustedChange);
 						}
 					}
 					previousFeatures = features;
 				}
 			});
+		}
 
+		private ConcurrentBag<CorrelationResult> GetCorrelationResults(int earningsCount)
+		{
 			var results = new ConcurrentBag<CorrelationResult>();
 			Parallel.For(0, _features, i =>
 			{
-				string name = _featureNames[i];
-				var featureObservations = observations[i].ToArray();
-				if ((decimal)featureObservations.Length / earningsCount < _minimumObservationRatio)
+				var featureStats = _stats[i];
+				string name = featureStats.Name;
+				var observations = _stats[i].Observations.ToArray();
+				if ((decimal)observations.Length / earningsCount < _minimumObservationRatio)
 					return;
-				decimal coefficient = GetSpearmanCoefficient(featureObservations);
-				var result = new CorrelationResult(name, coefficient, featureObservations.Length);
+				decimal coefficient = GetSpearmanCoefficient(observations);
+				var result = new CorrelationResult(name, coefficient, observations.Length);
 				results.Add(result);
 			});
-
-			stopwatch.Stop();
-			Console.WriteLine($"Calculated {results.Count} coefficients from {earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
-
-			if (_outputDirectory == null)
-			{
-				var sortedResults = results.OrderByDescending(x => x.Coefficient);
-				foreach (var result in sortedResults)
-					Console.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / earningsCount:P2})");
-			}
-			else
-			{
-				if (!Directory.Exists(_outputDirectory))
-					Directory.CreateDirectory(_outputDirectory);
-				foreach (var result in results)
-				{
-					string path = Path.Combine(_outputDirectory, $"{result.Feature}.csv");
-					bool newFile = !File.Exists(path);
-					using (var writer = new StreamWriter(path, true))
-					{
-						if (newFile)
-							writer.WriteLine("Day,Coefficient");
-						writer.WriteLine($"{forecastDays},{result.Coefficient}");
-					}
-				}
-			}
+			return results;
 		}
 
 		private static decimal? GetLastPrice(DateTime now, SortedList<DateTime, PriceData> priceData)
@@ -198,11 +212,14 @@ namespace Fundamentalist.Correlation
 
 		private float GetChange(float previous, float current)
 		{
+			const float Maximum = 10.0f;
 			const float Epsilon = 1e-4f;
-			if (Math.Abs(previous) < Epsilon)
+			if (previous == 0)
+				return 0;
+			else if (Math.Abs(previous) < Epsilon)
 				previous = Math.Sign(previous) * Epsilon;
 			float ratio = current / previous;
-			float change = ratio - 1.0f;
+			float change = Math.Max(Math.Min(ratio - 1.0f, Maximum), - Maximum);
 			return change;
 		}
 
