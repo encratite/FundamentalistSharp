@@ -33,7 +33,7 @@ namespace Fundamentalist.Common
 				var featureTokens = tokens.Skip(2);
 				if (featureLimit != null)
 					featureTokens = featureTokens.Take(featureLimit.Value);
-				float[] features = featureTokens.Select(x => float.Parse(x)).Select(x => x != 0f ? x : float.NaN).ToArray();
+				float[] features = featureTokens.Select(x => float.Parse(x)).ToArray();
 				if (featureSelection != null)
 				{
 					var filteredFeatures = new float[featureSelection.Count];

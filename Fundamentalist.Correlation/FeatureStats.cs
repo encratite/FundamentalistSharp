@@ -6,9 +6,11 @@ namespace Fundamentalist.Correlation
 	{
 		public string Name { get; set; }
 		public ConcurrentBag<Observation> Observations { get; set; } = new ConcurrentBag<Observation>();
+		public ConcurrentBag<float> PresenceGains { get; set; } = new ConcurrentBag<float>();
 		public ConcurrentBag<float> AppearanceGains { get; set; } = new ConcurrentBag<float>();
 		public ConcurrentBag<float> DisappearanceGains { get; set; } = new ConcurrentBag<float>();
 
+		public float? MeanPresenceGain { get; set; }
 		public float? MeanAppearanceGain { get; set; }
 		public float? MeanDisappearanceGain { get; set; }
 
@@ -19,6 +21,7 @@ namespace Fundamentalist.Correlation
 
 		public void SetGains()
 		{
+			MeanPresenceGain = GetMean(PresenceGains);
 			MeanAppearanceGain = GetMean(AppearanceGains);
 			MeanDisappearanceGain = GetMean(DisappearanceGains);
 		}
@@ -32,7 +35,7 @@ namespace Fundamentalist.Correlation
 
 		public override string ToString()
 		{
-			return $"{Name} ({MeanAppearanceGain}, {MeanDisappearanceGain})";
+			return $"{Name} ({MeanPresenceGain}, {MeanAppearanceGain}, {MeanDisappearanceGain})";
 		}
 	}
 }

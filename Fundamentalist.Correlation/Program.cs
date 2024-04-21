@@ -6,12 +6,12 @@ namespace Fundamentalist.Correlation
 	{
 		private static void Main(string[] arguments)
 		{
-			if (arguments.Length != 7)
+			if (arguments.Length != 9)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
-				Console.WriteLine($"{name.Name} <path to earnings .csv file> <price data directory> <forecast days> <number of features> <correlation output> <appearance output> <disappearance output>");
+				Console.WriteLine($"{name.Name} <path to earnings .csv file> <price data directory> <forecast days> <number of features> <correlation output> <presence output> <appearance output> <disappearance output> <feature count output>");
 				return;
 			}
 			string earningsPath = arguments[0];
@@ -19,8 +19,10 @@ namespace Fundamentalist.Correlation
 			int forecastDays = int.Parse(arguments[2]);
 			int features = int.Parse(arguments[3]);
 			string correlationOutput = arguments[4];
-			string appearanceOutput = arguments[5];
-			string disappearanceOutput = arguments[6];
+			string presenceOutput = arguments[5];
+			string appearanceOutput = arguments[6];
+			string disappearanceOutput = arguments[7];
+			string featureCountOutput = arguments[8];
 
 			decimal minimumObservationRatio = 0.01m;
 			DateTime fromDate = new DateTime(2010, 1, 1);
@@ -36,8 +38,10 @@ namespace Fundamentalist.Correlation
 				toDate,
 				forecastDays,
 				correlationOutput,
+				presenceOutput,
 				appearanceOutput,
-				disappearanceOutput
+				disappearanceOutput,
+				featureCountOutput
 			);
 			analyzer.Run();
 		}

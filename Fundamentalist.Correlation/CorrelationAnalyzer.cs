@@ -12,19 +12,22 @@ namespace Fundamentalist.Correlation
 		private DateTime _toDate;
 		private int _forecastDays;
 		private int _earningsCount;
-		private int _minimumAppearanceCount = 100;
+		private int _minimumAppearanceCount = 1000;
 
 		private string _earningsPath;
 		private string _priceDataDirectory;
 		string _correlationOutput;
+		string _presenceOutput;
 		string _appearanceOutput;
 		string _disappearanceOutput;
+		string _featureCountOutput;
 
 		private DatasetLoader _datasetLoader = new DatasetLoader();
 		private Dictionary<string, TickerCacheEntry> _cache;
 		private List<string> _featureNames;
 		private SortedList<DateTime, PriceData> _indexData;
 		private FeatureStats[] _stats;
+		private List<FeatureCountSample> _featureCounts = new List<FeatureCountSample>();
 
 		public CorrelationAnalyzer(
 			string earningsPath,
@@ -35,8 +38,10 @@ namespace Fundamentalist.Correlation
 			DateTime toDate,
 			int forecastDays,
 			string correlationOutput,
+			string presenceOutput,
 			string appearanceOutput,
-			string disappearanceOutput
+			string disappearanceOutput,
+			string featureCountOutput
 		)
 		{
 			_earningsPath = earningsPath;
@@ -47,8 +52,10 @@ namespace Fundamentalist.Correlation
 			_toDate = toDate;
 			_forecastDays = forecastDays;
 			_correlationOutput = correlationOutput;
+			_presenceOutput = presenceOutput;
 			_appearanceOutput = appearanceOutput;
 			_disappearanceOutput = disappearanceOutput;
+			_featureCountOutput = featureCountOutput;
 		}
 
 		public void Run()
@@ -110,8 +117,29 @@ namespace Fundamentalist.Correlation
 					writer.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / _earningsCount:P2})");
 			}
 
+			LogAppearanceGains(_presenceOutput, (x) => x.MeanPresenceGain, (x) => x.PresenceGains);
 			LogAppearanceGains(_appearanceOutput, (x) => x.MeanAppearanceGain, (x) => x.AppearanceGains);
 			LogAppearanceGains(_disappearanceOutput, (x) => x.MeanDisappearanceGain, (x) => x.DisappearanceGains);
+
+			using (var writer = new StreamWriter(_featureCountOutput))
+			{
+				writer.WriteLine("Count,Performance");
+				var aggregation = new Dictionary<int, List<float>>();
+				foreach (var sample in _featureCounts)
+				{
+					const int GroupSize = 10;
+					int key = (sample.Count / GroupSize) * GroupSize;
+					if (!aggregation.ContainsKey(key))
+						aggregation[key] = new List<float>();
+					aggregation[key].Add(sample.Performance);
+				}
+
+				foreach (var pair in aggregation.OrderBy(x => x.Key))
+				{
+					float mean = pair.Value.Sum() / pair.Value.Count;
+					writer.WriteLine($"{pair.Key},{mean}");
+				}
+			}
 		}
 
 		private void LogAppearanceGains(string path, Func<FeatureStats, float?> meanSelector, Func<FeatureStats, ConcurrentBag<float>> bagSelector)
@@ -135,34 +163,47 @@ namespace Fundamentalist.Correlation
 					if (now < _fromDate || now >= _toDate)
 						continue;
 					var features = pair.Value;
-					if (previousFeatures != null)
+					decimal? lastPrice = GetLastPrice(now, entry.PriceData);
+					decimal? futurePrice = GetFuturePrice(now, _forecastDays, entry.PriceData);
+					decimal? lastIndexPrice = GetLastPrice(now, _indexData);
+					decimal? futureIndexPrice = GetFuturePrice(now, _forecastDays, _indexData);
+					if (lastPrice.HasValue && futurePrice.HasValue && futureIndexPrice.HasValue)
 					{
-						decimal? lastPrice = GetLastPrice(now, entry.PriceData);
-						decimal? futurePrice = GetFuturePrice(now, _forecastDays, entry.PriceData);
-						if (!lastPrice.HasValue || !futurePrice.HasValue)
-							continue;
-						decimal? lastIndexPrice = GetLastPrice(now, _indexData);
-						decimal? futureIndexPrice = GetFuturePrice(now, _forecastDays, _indexData);
-						if (!lastIndexPrice.HasValue || !futureIndexPrice.HasValue)
-							continue;
 						float change = GetChange((float)lastPrice.Value, (float)futurePrice.Value);
 						float indexChange = GetChange((float)lastIndexPrice.Value, (float)futureIndexPrice.Value);
 						float adjustedChange = change - indexChange;
+						int count = 0;
 						for (int i = 0; i < _features; i++)
 						{
-							bool hasPrevious = previousFeatures[i] != 0;
-							bool hasCurrent = features[i] != 0;
+							bool featurePresent = features[i] != 0;
 							var featureStats = _stats[i];
-							if (hasPrevious && hasCurrent)
+							if (featurePresent)
 							{
-								float xCurrent = GetChange(previousFeatures[i], features[i]);
-								var observation = new Observation(xCurrent, adjustedChange);
-								featureStats.Observations.Add(observation);
+								featureStats.PresenceGains.Add(adjustedChange);
+								count++;
 							}
-							else if (!hasPrevious && hasCurrent)
-								featureStats.AppearanceGains.Add(adjustedChange);
-							else if (hasPrevious && !hasCurrent)
-								featureStats.DisappearanceGains.Add(adjustedChange);
+						}
+						var featureCount = new FeatureCountSample(count, adjustedChange);
+						_featureCounts.Add(featureCount);
+
+						if (previousFeatures != null)
+						{
+							for (int i = 0; i < _features; i++)
+							{
+								bool hasPrevious = previousFeatures[i] != 0;
+								bool hasCurrent = features[i] != 0;
+								var featureStats = _stats[i];
+								if (hasPrevious && hasCurrent)
+								{
+									float xCurrent = GetChange(previousFeatures[i], features[i]);
+									var observation = new Observation(xCurrent, adjustedChange);
+									featureStats.Observations.Add(observation);
+								}
+								else if (!hasPrevious && hasCurrent)
+									featureStats.AppearanceGains.Add(adjustedChange);
+								else if (hasPrevious && !hasCurrent)
+									featureStats.DisappearanceGains.Add(adjustedChange);
+							}
 						}
 					}
 					previousFeatures = features;

@@ -40,10 +40,117 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				// new LightLgbm(1000, null, null, null),
+				/*
+				new LightLgbm(20, null, 10, 1000),
+				new LightLgbm(30, null, 10, 1000),
+				new LightLgbm(40, null, 10, 1000),
+				new LightLgbm(50, null, 10, 1000),
+				new LightLgbm(60, null, 10, 1000),
+				new LightLgbm(70, null, 10, 1000),
+				new LightLgbm(80, null, 10, 1000),
+				new LightLgbm(90, null, 10, 1000),
+				new LightLgbm(100, null, 10, 1000),
+				*/
+				/*
+				new LightLgbm(70, null, 2, 1000),
+				new LightLgbm(70, null, 4, 1000),
+				new LightLgbm(70, null, 6, 1000),
+				new LightLgbm(70, null, 8, 1000),
+				new LightLgbm(70, null, 10, 1000),
+				new LightLgbm(70, null, 12, 1000),
+				new LightLgbm(70, null, 14, 1000),
+				*/
+				/*
+				new LightLgbm(70, null, 10, 10),
+				new LightLgbm(70, null, 10, 50),
+				new LightLgbm(70, null, 10, 100),
+				new LightLgbm(70, null, 10, 500),
+				*/
+				// new LightLgbm(50, null, 10, 100),
+				// new LightLgbm(75, null, 10, 100),
+				// new LightLgbm(100, null, 10, 100),
+				// new LightLgbm(250, null, 10, 100)
+				/*
+				new LightLgbm(75, null, 20, 100),
+				new LightLgbm(75, null, 50, 100),
+				new LightLgbm(75, null, 100, 100),
+				*/
+				// Best for 10000 features?
+				// new LightLgbm(75, null, 10, 100)
+				/*
+				new LightLgbm(10, null, 10, 100),
+				new LightLgbm(25, null, 10, 100),
+				new LightLgbm(50, null, 10, 100),
+				new LightLgbm(75, null, 10, 100),
+				new LightLgbm(100, null, 10, 100),
+				*/
+				/*
+				new LightLgbm(250, null, 10, 100),
+				new LightLgbm(500, null, 10, 100),
+				new LightLgbm(750, null, 10, 100),
+				new LightLgbm(1000, null, 10, 100),
+				*/
+				// new LightLgbm(75, null, 10, 100),
 				// new FastTree(false, 20, 100, 10, 0.2),
+				/*
+				new FastTree(false, 20, 100, 20, 0.2),
+				// Best:
+				new FastTree(false, 20, 100, 30, 0.2),
+				new FastTree(false, 20, 100, 40, 0.2),
+				new FastTree(false, 20, 100, 50, 0.2),
+				new FastTree(false, 20, 100, 100, 0.2),
+				new FastTree(false, 20, 100, 1000, 0.2),
+				*/
+				// new FastTree(false, 20, 10, 30, 0.2),
+				// new FastTree(false, 20, 25, 30, 0.2),
+				/*
+				new FastTree(false, 20, 50, 30, 0.2),
+				new FastTree(false, 20, 150, 30, 0.2),
+				new FastTree(false, 20, 500, 30, 0.2),
+				new FastTree(false, 20, 1000, 30, 0.2),
+				new FastTree(false, 10, 100, 30, 0.2),
+				new FastTree(false, 25, 100, 30, 0.2),
+				new FastTree(false, 50, 100, 30, 0.2),
+				new FastTree(false, 100, 100, 30, 0.2),
+				new FastTree(false, 100, 100, 100, 0.2),
+				*/
+				/*
+				new FastTree(false, 10, 100, 30, 0.15),
+				new FastTree(false, 10, 100, 30, 0.1),
+				new FastTree(false, 10, 100, 30, 0.25),
+				new FastTree(false, 10, 100, 30, 0.5),
+				new FastTree(false, 10, 100, 30, 0.01),
+				new FastTree(false, 10, 200, 30, 0.01),
+				new FastTree(false, 10, 300, 30, 0.01),
+				new FastTree(false, 10, 400, 30, 0.01),
+				new FastTree(false, 10, 500, 30, 0.01),
+				*/
+				/*
 				new FastForest(false, 20, 100, 10),
+				new FastForest(false, 30, 100, 10),
+				new FastForest(false, 50, 100, 10),
+				new FastForest(false, 100, 100, 10),
+				new FastForest(false, 500, 100, 10),
+				new FastForest(false, 1000, 100, 10),
+				new FastForest(false, 20, 50, 10),
+				new FastForest(false, 20, 100, 10),
+				new FastForest(false, 20, 250, 10),
+				new FastForest(false, 20, 500, 10),
+				new FastForest(false, 20, 1000, 10),
+				new FastForest(false, 20, 500, 10),
+				*/
+				new Gam(false, 10, 255, 0.002),
+				new Gam(false, 25, 255, 0.002),
+				new Gam(false, 50, 255, 0.002),
 				new Gam(false, 100, 255, 0.002),
+				new Gam(false, 10, 500, 0.003),
+				new Gam(false, 25, 500, 0.004),
+				new Gam(false, 50, 500, 0.005),
+				new Gam(false, 100, 500, 0.006),
+				new Gam(false, 200, 500, 0.007),
+				new Gam(false, 300, 500, 0.008),
+				new Gam(false, 400, 500, 0.009),
+				new Gam(false, 500, 500, 0.01),
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
@@ -221,9 +328,7 @@ namespace Fundamentalist.Trainer
 			schema[nameof(DataPoint.Features)].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
 			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
-			var estimator =
-				mlContext.Transforms.IndicateMissingValues("MissingFeatures", nameof(DataPoint.Features))
-				.Append(algorithm.GetEstimator(mlContext));
+			var estimator = algorithm.GetEstimator(mlContext);
 			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {featureCount} features each");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
