@@ -40,16 +40,10 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				new SdcaMaximumEntropy(1000, null, null),
-				new Sgd(false, 100, 0.01),
-				new Sgd(true, 100, 0.01),
-				new LightLgbm(100, null, null, null),
-				new FastTree(false, 20, 100, 10, 0.2),
-				new FastTree(true, 20, 100, 10, 0.2),
+				// new LightLgbm(1000, null, null, null),
+				// new FastTree(false, 20, 100, 10, 0.2),
 				new FastForest(false, 20, 100, 10),
-				new FastForest(true, 20, 100, 10),
 				new Gam(false, 100, 255, 0.002),
-				new Gam(true, 100, 255, 0.002),
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
@@ -222,13 +216,14 @@ namespace Fundamentalist.Trainer
 		private void TrainAndEvaluateModel(IAlgorithm algorithm)
 		{
 			var mlContext = new MLContext();
-			const string FeatureName = "Features";
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
 			int featureCount = _trainingData.First().Features.Length;
-			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
+			schema[nameof(DataPoint.Features)].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
 			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
-			var estimator = algorithm.GetEstimator(mlContext);
+			var estimator =
+				mlContext.Transforms.IndicateMissingValues("MissingFeatures", nameof(DataPoint.Features))
+				.Append(algorithm.GetEstimator(mlContext));
 			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {featureCount} features each");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();

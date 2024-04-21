@@ -17,6 +17,7 @@ namespace Fundamentalist.Trainer
 			string earningsPath = arguments[0];
 			string priceDataDirectory = arguments[1];
 			Run(earningsPath, priceDataDirectory);
+			Console.Beep();
 		}
 
 		private static void Run(string earningsPath, string priceDataDirectory)
