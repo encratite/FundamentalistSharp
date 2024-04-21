@@ -3,7 +3,6 @@ using Fundamentalist.Trainer.Algorithm;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System.Diagnostics;
-using System.Security.Cryptography;
 
 namespace Fundamentalist.Trainer
 {
@@ -41,88 +40,35 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
-				/*
-				new Sdca(500, null, null),
-				new Lbfgs(1e-8f, 1f, 1f),
-				new Sgd(250, 0.01, 1e-6f),
-				new LightLgbm(1000, null, null, null),
-				new FastTree(20, 500, 10, 0.15),
-				new FastForest(20, 500, 20),
-				*/
-				// new Gam(10000, 255, 0.05),
-				// new Gam(10000, 255, 0.04),
-				// new Gam(10000, 255, 0.03),
-				// new Gam(10000, 255, 0.02),
-				// new Gam(10000, 255, 0.01),
-				// new FieldAwareFactorizationMachine(2000, 0.1f, 20),
-				// new LightLgbm(10000, null, null, null),
-				// new LightLgbm(25000, null, null, 20),
-				new LightLgbm(10000, null, null, null),
-				new LightLgbm(10000, 1, null, null),
-				new LightLgbm(10000, 2, null, null),
-				new LightLgbm(10000, 1e-1, null, null),
-				new LightLgbm(10000, 1e-2, null, null),
-				new LightLgbm(10000, 1e-3, null, null),
-				/*
-				new LightLgbm(10000, null, null, 10),
-				new LightLgbm(10000, null, null, 20),
-				new LightLgbm(10000, null, null, 50),
-				*/
-				// new LightLgbm(10000, null, null, 100),
-				// new LightLgbm(10000, null, null, 8),
-				// Best
-				// new LightLgbm(10000, null, null, 10),
-				// new LightLgbm(10000, null, null, 12),
-				// new LightLgbm(10000, null, null, 14),
-				// new LightLgbm(10000, null, null, 500),
-				// new LightLgbm(15000, null, null, 100),
-				// new LightLgbm(20000, null, null, 1000),
-				// new FastTree(30, 2000, 10, 0.1),
-				// new FastTree(30, 1000, 10, 0.1),
+				new SdcaMaximumEntropy(1000, null, null),
+				new Sgd(false, 100, 0.01),
+				new Sgd(true, 100, 0.01),
+				new LightLgbm(100, null, null, null),
+				new FastTree(false, 20, 100, 10, 0.2),
+				new FastTree(true, 20, 100, 10, 0.2),
+				new FastForest(false, 20, 100, 10),
+				new FastForest(true, 20, 100, 10),
+				new Gam(false, 100, 255, 0.002),
+				new Gam(true, 100, 255, 0.002),
 			};
-
-			var random = new Random();
-			var evaluatedTickers = new HashSet<string>();
-			var performances = new Dictionary<IAlgorithm, AlgorithmPerformance>();
+			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
-				performances[algorithm] = new AlgorithmPerformance();
-
-			var hasPriceData = (DateTime startDate, SortedList<DateTime, PriceData> priceData) =>
 			{
-				for (DateTime i = startDate; i < startDate + TimeSpan.FromDays(10); i += TimeSpan.FromDays(1))
-				{
-					if (priceData.ContainsKey(i))
-						return true;
-				}
-				return false;
-			};
-			while (evaluatedTickers.Count < 10)
+				TrainAndEvaluateModel(algorithm);
+				backtest = new Backtest(_testData, _indexPriceData);
+				decimal performance = backtest.Run();
+				logPerformance(algorithm.Name, performance);
+			}
+
+			if (backtest != null)
 			{
-				int index = random.Next(_tickerCache.Count);
-				string ticker = _tickerCache.Keys.ToList()[index];
-				if (evaluatedTickers.Contains(ticker))
-					continue;
-
-				var priceData = _tickerCache[ticker].PriceData;
-				bool hasTrainingData = hasPriceData(_options.TrainingDate, priceData);
-				bool hasTestData = hasPriceData(_options.TestDate, priceData);
-				if (!hasTrainingData || !hasTestData)
-				{
-					Console.WriteLine($"Skipping {ticker} due to lack of price data");
-					continue;
-				}
-
-				foreach (var algorithm in algorithms)
-				{
-					var algorithmPerformance = performances[algorithm];
-					TrainAndEvaluateModel(ticker, algorithm, algorithmPerformance);
-					var performanceList = algorithmPerformance.Performances;
-					decimal meanPerformance = performanceList.Sum() / performanceList.Count;
-					var f1ScoreList = algorithmPerformance.F1Scores;
-					double meanF1Score = f1ScoreList.Sum() / f1ScoreList.Count;
-					Console.WriteLine($"Total performance of algorithm \"{algorithm.Name}\" after {performanceList.Count} runs: {meanPerformance - 1:+#.00%;-#.00%;+0.00%} (F1 score {meanF1Score:F3})");
-				}
-				evaluatedTickers.Add(ticker);
+				logPerformance("S&P 500", backtest.IndexPerformance);
+				Console.WriteLine("Options used:");
+				_options.Print();
+				Console.WriteLine("Performance summary:");
+				int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length;
+				foreach (var entry in backtestLog)
+					Console.WriteLine($"  {entry.Description.PadRight(maxPadding)} {entry.Performance:#.00%}");
 			}
 		}
 
@@ -161,85 +107,36 @@ namespace Fundamentalist.Trainer
 			if (_tickerCache == null)
 			{
 				Console.WriteLine("Loading datasets");
-				_datasetLoader.Load(_earningsPath, _priceDataDirectory, _options.LoaderFeatures ?? _options.Features, PriceDataMinimum);
+				_datasetLoader.Load(_earningsPath, _priceDataDirectory, null, PriceDataMinimum);
 				_tickerCache = _datasetLoader.Cache;
 				stopwatch.Stop();
 				Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			}
 			Console.WriteLine("Generating data points");
 			stopwatch.Restart();
-			int index = 0;
-			foreach (var entry in _tickerCache)
-			{
-				entry.Value.Index = index;
-				index++;
-			}
-			int trainingIndex = 0;
-			int testIndex = 0;
-			var trainingIndexMap = new Dictionary<DateTime, int>();
-			var testIndexMap = new Dictionary<DateTime, int>();
-			foreach (var pair in _tickerCache["AAPL"].PriceData)
-			{
-				var date = pair.Key;
-				var priceData = pair.Value;
-				if (date >= _options.TrainingDate && date < _options.TestDate)
-				{
-					trainingIndexMap[date] = trainingIndex;
-					trainingIndex++;
-				}
-				else if (date >= _options.TestDate)
-				{
-					testIndexMap[date] = testIndex;
-					testIndex++;
-				}
-			}
-			GenerateEmptyDataPoints(trainingIndexMap, _trainingData);
-			GenerateEmptyDataPoints(testIndexMap, _testData);
 			Parallel.ForEach(_tickerCache, x =>
 			{
 				string ticker = x.Key;
 				var cacheEntry = x.Value;
-				GenerateDataPoints(ticker, cacheEntry, null, _options.TestDate, _trainingData, trainingIndexMap);
-				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData, testIndexMap);
+				GenerateDataPoints(ticker, cacheEntry, null, _options.TestDate, _trainingData);
+				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData);
 			});
-			var setVolumeRatios = (List<DataPoint> dataPoints) =>
-			{
-				Parallel.ForEach(dataPoints, x =>
-				{
-					var volumeFeatures = x.VolumeFeatures;
-					var newVolumeFeatures = new float[volumeFeatures.Length];
-					newVolumeFeatures[0] = 1f;
-					for (int i = 1; i < volumeFeatures.Length; i++)
-						newVolumeFeatures[i] = volumeFeatures[i] / volumeFeatures[i - 1] - 1f;
-					x.VolumeFeatures = newVolumeFeatures;
-				});
-			};
-			setVolumeRatios(_trainingData);
-			setVolumeRatios(_testData);
 			var sortData = (List<DataPoint> data) => data.Sort((x, y) => x.Date.CompareTo(y.Date));
 			sortData(_trainingData);
 			sortData(_testData);
 			stopwatch.Stop();
 			Console.WriteLine($"Removed {_datasetLoader.GoodTickers} tickers ({(decimal)_datasetLoader.BadTickers / (_datasetLoader.BadTickers + _datasetLoader.GoodTickers):P1}) due to insufficient price data");
-			Console.WriteLine($"Generated {_trainingData.Count} data points of training data and {_testData.Count} data points of test data in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			decimal trainingOutperform = GetLabelratio(PerformanceLabelType.Outperform, _trainingData);
+			decimal trainingUnderperform = GetLabelratio(PerformanceLabelType.Underperform, _trainingData);
+			decimal testOutperform = GetLabelratio(PerformanceLabelType.Outperform, _testData);
+			decimal testUnderperform = GetLabelratio(PerformanceLabelType.Underperform, _testData);
+			Console.WriteLine($"Generated {_trainingData.Count} data points of training data ({trainingOutperform:P2} outperform, {trainingUnderperform:P2} underperform) and {_testData.Count} data points of test data ({testOutperform:P2} outperform, {testUnderperform:P2} underperform) in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
-		private void GenerateEmptyDataPoints(Dictionary<DateTime, int> indexMap, List<DataPoint> data)
+		private decimal GetLabelratio(PerformanceLabelType label, List<DataPoint> dataPoints)
 		{
-			int count = _tickerCache.Count;
-			foreach (var date in indexMap.Keys)
-			{
-				var dataPoint = new DataPoint
-				{
-					Date = date,
-					CloseOpenFeatures = new float[count],
-					HighLowFeatures = new float[count],
-					VolumeFeatures = new float[count],
-					Labels = new bool[count],
-					PerformanceRatios = new decimal[count]
-				};
-				data.Add(dataPoint);
-			}
+			int count = dataPoints.Where(x => x.Label == label).Count();
+			return (decimal)count / dataPoints.Count;
 		}
 
 		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
@@ -249,58 +146,88 @@ namespace Fundamentalist.Trainer
 				(!to.HasValue || date.Value < to.Value);
 		}
 
-		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints, Dictionary<DateTime, int> indexMap)
+		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
 		{
-			var prices = tickerCacheEntry.PriceData;
-			foreach (var pair in indexMap)
-			{
-				var date = pair.Key;
-				int index = pair.Value;
-				PriceData priceData;
-				if (!prices.TryGetValue(date, out priceData))
-					continue;
-				var dataPoint = dataPoints[index];
-				int featureIndex = tickerCacheEntry.Index.Value;
-				dataPoint.CloseOpenFeatures[featureIndex] = (float)(priceData.Close / priceData.Open - 1);
-				dataPoint.HighLowFeatures[featureIndex] = (float)(priceData.High / priceData.Low - 1);
-				dataPoint.VolumeFeatures[featureIndex] = (float)priceData.Volume;
+			var earnings = tickerCacheEntry.Earnings.Where(x => InRange(x.Key, from, to) && x.Key >= _options.TrainingDate).ToList();
+			var priceData = tickerCacheEntry.PriceData;
+			if (priceData == null)
+				return;
 
-				decimal? futurePrice = null;
-				int attempts = 0;
-				for (DateTime futureDate = date + TimeSpan.FromDays(_options.ForecastDays); attempts < 7 && !futurePrice.HasValue; futureDate += TimeSpan.FromDays(1), attempts++)
-					futurePrice = GetClosePrice(futureDate, prices);
+			foreach (var currentEarnings in earnings)
+			{
+				DateTime currentDate = currentEarnings.Key + TimeSpan.FromDays(_options.ForecastDays);
+				if (!IsWorkingDay(currentDate))
+					continue;
+				DateTime futureDate = GetNextWorkingDay(currentDate + TimeSpan.FromDays(1));
+				var earningsFeatures = currentEarnings.Value;
+
+				decimal? currentPrice = GetOpenPrice(currentDate, priceData);
+				if (!currentPrice.HasValue)
+					continue;
+				decimal? futurePrice = GetOpenPrice(futureDate, priceData);
 				if (!futurePrice.HasValue)
 					continue;
-				decimal ratio = futurePrice.Value / priceData.Close;
-				decimal gain = ratio - 1m;
-				bool label = gain > _options.MinimumGain;
-				int labelIndex = tickerCacheEntry.Index.Value;
-				dataPoint.Labels[labelIndex] = label;
-				dataPoint.PerformanceRatios[labelIndex] = ratio;
+				decimal? currentIndexPrice = GetOpenPrice(currentDate, priceData);
+				if (!currentIndexPrice.HasValue)
+					continue;
+				decimal? futureIndexPrice = GetOpenPrice(futureDate, priceData);
+				if (!futureIndexPrice.HasValue)
+					continue;
+				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
+				if (pastPrices.Length < PriceDataMinimum)
+					continue;
+
+				decimal performance = futurePrice.Value / currentPrice.Value - futureIndexPrice.Value / currentIndexPrice.Value;
+				var generalFeatures = new float[]
+				{
+					(float)currentDate.DayOfWeek
+				};
+				var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
+				var features = generalFeatures.Concat(earningsFeatures).Concat(priceDataFeatures);
+				PerformanceLabelType label = PerformanceLabelType.Neutral;
+				if (performance > _options.OutperformLimit)
+					label = PerformanceLabelType.Outperform;
+				else if (performance < _options.UnderperformLimit)
+					label = PerformanceLabelType.Underperform;
+				var dataPoint = new DataPoint
+				{
+					Features = features.ToArray(),
+					Label = label,
+					// Metadata for backtesting, not used by training
+					Ticker = ticker,
+					Date = currentDate,
+					PriceData = priceData
+				};
+				lock (dataPoints)
+					dataPoints.Add(dataPoint);
 			}
 		}
 
-		private void TrainAndEvaluateModel(string ticker, IAlgorithm algorithm, AlgorithmPerformance algorithmPerformance)
+		private bool IsWorkingDay(DateTime date)
 		{
-			Console.WriteLine("==========================");
-			Console.WriteLine($"Evaluating ticker {ticker}");
-			Console.WriteLine("==========================");
-			SetLabels(ticker, _trainingData);
-			SetLabels(ticker, _testData);
+			return
+				date.DayOfWeek != DayOfWeek.Saturday &&
+				date.DayOfWeek != DayOfWeek.Sunday;
+		}
+
+		private DateTime GetNextWorkingDay(DateTime date)
+		{
+			while (!IsWorkingDay(date))
+				date += TimeSpan.FromDays(1);
+			return date;
+		}
+
+		private void TrainAndEvaluateModel(IAlgorithm algorithm)
+		{
 			var mlContext = new MLContext();
 			const string FeatureName = "Features";
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
-			int featureCount = _trainingData.First().CloseOpenFeatures.Length;
-			schema["CloseOpenFeatures"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
-			schema["HighLowFeatures"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
-			schema["VolumeFeatures"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
+			int featureCount = _trainingData.First().Features.Length;
+			schema[FeatureName].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
 			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
 			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
-			var algorithmEstimator = algorithm.GetEstimator(mlContext);
-			var estimator =
-				mlContext.Transforms.Concatenate("Features", "CloseOpenFeatures", "HighLowFeatures", "VolumeFeatures")
-				.Append(algorithmEstimator);
-			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {3 * featureCount} features each");
+			var estimator = algorithm.GetEstimator(mlContext);
+			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {featureCount} features each");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			var model = estimator.Fit(trainingData);
@@ -308,46 +235,21 @@ namespace Fundamentalist.Trainer
 			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
 			var predictions = model.Transform(testData);
 			SetScores(predictions);
-			BinaryClassificationMetrics metrics;
-			if (algorithm.Calibrated)
-				metrics = mlContext.BinaryClassification.Evaluate(predictions);
-			else
-				metrics = mlContext.BinaryClassification.EvaluateNonCalibrated(predictions);
 			if (PrintEvaluation)
 			{
-				Console.WriteLine($"  Accuracy: {metrics.Accuracy:P2}");
-				Console.WriteLine($"  F1Score: {metrics.F1Score:F3}");
-				Console.WriteLine($"  PositivePrecision: {metrics.PositivePrecision:P2}");
-				Console.WriteLine($"  NegativePrecision: {metrics.NegativePrecision:P2}");
-				Console.WriteLine($"  PositiveRecall: {metrics.PositiveRecall:P2}");
-				Console.WriteLine($"  NegativeRecall: {metrics.NegativeRecall:P2}");
+				var metrics = mlContext.MulticlassClassification.Evaluate(predictions);
+				Console.WriteLine($"  MacroAccuracy: {metrics.MacroAccuracy:P2}");
+				Console.WriteLine($"  MicroAccuracy: {metrics.MicroAccuracy:P2}");
+				Console.WriteLine($"  Underperform LogLoss: {metrics.PerClassLogLoss[0]:F3}");
+				Console.WriteLine($"  Neutral LogLoss: {metrics.PerClassLogLoss[1]:F3}");
+				Console.WriteLine($"  Overperform LogLoss: {metrics.PerClassLogLoss[2]:F3}");
 				Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
 			}
-			decimal performance = 1m;
-			const decimal Spread = 0.004m;
-			int ratioIndex = _tickerCache[ticker].Index.Value;
-			foreach (var dataPoint in _testData)
-			{
-				if (dataPoint.PredictedLabel.Value)
-					performance *= dataPoint.PerformanceRatios[ratioIndex] - Spread;
-			}
-			Console.WriteLine($"Performance: {performance - 1m:P2}");
-			algorithmPerformance.Performances.Add(performance);
-			algorithmPerformance.F1Scores.Add(metrics.F1Score);
-		}
-
-		private void SetLabels(string ticker, List<DataPoint> dataPoints)
-		{
-			int index = _tickerCache[ticker].Index.Value;
-			Parallel.ForEach(dataPoints, dataPoint =>
-			{
-				dataPoint.Label = dataPoint.Labels[index];
-			});
 		}
 
 		private void SetScores(IDataView predictions)
 		{
-			var predictedLabels = predictions.GetColumn<bool>("PredictedLabel").ToArray();
+			var predictedLabels = predictions.GetColumn<PerformanceLabelType>("PredictedLabel").ToArray();
 			int i = 0;
 			foreach (var dataPoint in _testData)
 			{

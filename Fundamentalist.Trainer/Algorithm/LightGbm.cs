@@ -13,7 +13,7 @@ namespace Fundamentalist.Trainer.Algorithm
 
 		public bool Calibrated => true;
 
-		public LightLgbm(int numberOfIterations, double? learningRate, int? numberOfLeaves, int? minimumExampleCountPerLeaf)
+		public LightLgbm(int numberOfIterations = 100, double? learningRate = null, int? numberOfLeaves = null, int? minimumExampleCountPerLeaf = null)
 		{
 			_numberOfIterations = numberOfIterations;
 			_learningRate = learningRate;
@@ -23,7 +23,7 @@ namespace Fundamentalist.Trainer.Algorithm
 
 		public IEstimator<ITransformer> GetEstimator(MLContext mlContext)
 		{
-			IEstimator<ITransformer> estimator = mlContext.BinaryClassification.Trainers.LightGbm(numberOfIterations: _numberOfIterations, learningRate: _learningRate, numberOfLeaves: _numberOfLeaves, minimumExampleCountPerLeaf: _minimumExampleCountPerLeaf);
+			IEstimator<ITransformer> estimator = mlContext.MulticlassClassification.Trainers.LightGbm(numberOfIterations: _numberOfIterations, learningRate: _learningRate, numberOfLeaves: _numberOfLeaves, minimumExampleCountPerLeaf: _minimumExampleCountPerLeaf);
 			return estimator;
 		}
 	}

@@ -17,7 +17,7 @@
 		public int _badTickers;
 		private int _goodTickers;
 
-		public void Load(string earningsPath, string priceDataDirectory, int features = 1000, int priceDataMinimum = 200, HashSet<int> featureSelection = null)
+		public void Load(string earningsPath, string priceDataDirectory, int? features = 1000, int priceDataMinimum = 200, HashSet<int> featureSelection = null)
 		{
 			Cache = new Dictionary<string, TickerCacheEntry>();
 			_badTickers = 0;
@@ -26,7 +26,7 @@
 			LoadPriceData(priceDataDirectory, priceDataMinimum);
 		}
 
-		private void LoadEarnings(string earningsPath, int features, HashSet<int> featureSelection)
+		private void LoadEarnings(string earningsPath, int? features, HashSet<int> featureSelection)
 		{
 			var earningLines = DataReader.GetEarnings(earningsPath, features, featureSelection);
 			foreach (var x in earningLines)

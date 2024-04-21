@@ -20,7 +20,7 @@ namespace Fundamentalist.Common
 			return output;
 		}
 
-		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit, HashSet<int> featureSelection)
+		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit = null, HashSet<int> featureSelection = null)
 		{
 			var output = new ConcurrentBag<EarningsLine>();
 			var lines = File.ReadAllLines(csvPath);

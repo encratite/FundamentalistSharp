@@ -1,26 +1,31 @@
-﻿using Microsoft.ML.Data;
+﻿using Fundamentalist.Common;
+using Microsoft.ML.Data;
 
 namespace Fundamentalist.Trainer
 {
-	public class DataPoint
+	internal enum PerformanceLabelType
 	{
-		// public float[] Features { get; set; } = new float[] { };
-		public float[] CloseOpenFeatures { get; set; }
-		public float[] HighLowFeatures { get; set; }
-		public float[] VolumeFeatures { get; set; }
+		Underperform,
+		Neutral,
+		Outperform
+	}
 
-		public bool Label { get; set; }
+	internal class DataPoint
+	{
+		public float[] Features { get; set; }
+
+		public PerformanceLabelType Label { get; set; }
 
 		[NoColumn]
-		public bool[] Labels { get; set; }
-
-		[NoColumn]
-		public decimal[] PerformanceRatios { get; set; }
+		public string Ticker { get; set; }
 
 		[NoColumn]
 		public DateTime Date { get; set; }
 
 		[NoColumn]
-		public bool? PredictedLabel { get; set; }
+		public SortedList<DateTime, PriceData> PriceData { get; set; }
+
+		[NoColumn]
+		public PerformanceLabelType? PredictedLabel { get; set; }
 	}
 }
