@@ -62,7 +62,7 @@ namespace Fundamentalist.Correlation
 			Console.WriteLine("Loading datasets");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			_datasetLoader.Load(_earningsPath, _priceDataDirectory, _features);
+			_datasetLoader.Load(_earningsPath, _priceDataDirectory, _features, 200, _fromDate, _toDate);
 			_cache = _datasetLoader.Cache;
 			_featureNames = DataReader.GetFeatureNames(_earningsPath);
 			_indexData = DataReader.GetPriceData(DataReader.IndexTicker, _priceDataDirectory);

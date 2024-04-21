@@ -3,7 +3,7 @@ using Microsoft.ML.Data;
 
 namespace Fundamentalist.Trainer
 {
-	internal enum PerformanceLabelType
+	internal enum PerformanceLabelType : UInt32
 	{
 		Underperform,
 		Neutral,
@@ -14,7 +14,8 @@ namespace Fundamentalist.Trainer
 	{
 		public float[] Features { get; set; }
 
-		public PerformanceLabelType Label { get; set; }
+		[KeyType(3)]
+		public UInt32 Label { get; set; }
 
 		[NoColumn]
 		public string Ticker { get; set; }

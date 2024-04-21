@@ -27,8 +27,8 @@ namespace Fundamentalist.Trainer
 				ForecastDays = 20,
 				TrainingDate = new DateTime(2018, 1, 1),
 				TestDate = new DateTime(2023, 1, 1),
-				OutperformLimit = 0.025m,
-				UnderperformLimit = -0.025m
+				OutperformLimit = 0.015m,
+				UnderperformLimit = -0.015m
 			};
 			trainer.Run(options, earningsPath, priceDataDirectory);
 		}

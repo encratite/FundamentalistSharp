@@ -20,13 +20,16 @@ namespace Fundamentalist.Common
 			return output;
 		}
 
-		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit = null, HashSet<int> featureSelection = null)
+		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit = null, DateTime? from = null, DateTime? to = null, HashSet<int> featureSelection = null)
 		{
 			var output = new ConcurrentBag<EarningsLine>();
 			var lines = File.ReadAllLines(csvPath);
 			Parallel.ForEach(lines.Skip(1), line =>
 			{
 				var tokens = Split(line);
+				DateTime date = DateTime.Parse(tokens[1]);
+				if (OutOfRange(date, from, to))
+					return;
 				var featureTokens = tokens.Skip(2);
 				if (featureLimit != null)
 					featureTokens = featureTokens.Take(featureLimit.Value);
@@ -45,7 +48,7 @@ namespace Fundamentalist.Common
 				var earningsLine = new EarningsLine()
 				{
 					Ticker = tokens[0],
-					Date = DateTime.Parse(tokens[1]),
+					Date = date,
 					Features = features
 				};
 				output.Add(earningsLine);
@@ -90,8 +93,7 @@ namespace Fundamentalist.Common
 					priceData.Low == 0 ||
 					priceData.Close == 0 ||
 					priceData.Volume == 0 ||
-					(from.HasValue && priceData.Date < from.Value) ||
-					(to.HasValue && priceData.Date >= to.Value)
+					OutOfRange(priceData.Date, from, to)
 				)
 					continue;
 				output.Add(priceData.Date, priceData);
@@ -103,6 +105,13 @@ namespace Fundamentalist.Common
 		{
 			var tokens = line.Split(',');
 			return tokens;
+		}
+
+		private static bool OutOfRange(DateTime date, DateTime? from, DateTime? to)
+		{
+			return
+				(from.HasValue && date.Date < from.Value) ||
+				(to.HasValue && date.Date >= to.Value);
 		}
 	}
 }

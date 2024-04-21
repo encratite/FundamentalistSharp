@@ -55,9 +55,11 @@ namespace Fundamentalist.Trainer
 			foreach (var algorithm in algorithms)
 			{
 				TrainAndEvaluateModel(algorithm);
+				/*
 				backtest = new Backtest(_testData, _indexPriceData);
 				decimal performance = backtest.Run();
 				logPerformance(algorithm.Name, performance);
+				*/
 			}
 
 			if (backtest != null)
@@ -107,7 +109,7 @@ namespace Fundamentalist.Trainer
 			if (_tickerCache == null)
 			{
 				Console.WriteLine("Loading datasets");
-				_datasetLoader.Load(_earningsPath, _priceDataDirectory, null, PriceDataMinimum);
+				_datasetLoader.Load(_earningsPath, _priceDataDirectory, null, PriceDataMinimum, _options.TrainingDate);
 				_tickerCache = _datasetLoader.Cache;
 				stopwatch.Stop();
 				Console.WriteLine($"Loaded datasets in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -135,7 +137,7 @@ namespace Fundamentalist.Trainer
 
 		private decimal GetLabelratio(PerformanceLabelType label, List<DataPoint> dataPoints)
 		{
-			int count = dataPoints.Where(x => x.Label == label).Count();
+			int count = dataPoints.Where(x => x.Label == (UInt32)label).Count();
 			return (decimal)count / dataPoints.Count;
 		}
 
@@ -167,10 +169,10 @@ namespace Fundamentalist.Trainer
 				decimal? futurePrice = GetOpenPrice(futureDate, priceData);
 				if (!futurePrice.HasValue)
 					continue;
-				decimal? currentIndexPrice = GetOpenPrice(currentDate, priceData);
+				decimal? currentIndexPrice = GetOpenPrice(currentDate, _indexPriceData);
 				if (!currentIndexPrice.HasValue)
 					continue;
-				decimal? futureIndexPrice = GetOpenPrice(futureDate, priceData);
+				decimal? futureIndexPrice = GetOpenPrice(futureDate, _indexPriceData);
 				if (!futureIndexPrice.HasValue)
 					continue;
 				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
@@ -192,7 +194,7 @@ namespace Fundamentalist.Trainer
 				var dataPoint = new DataPoint
 				{
 					Features = features.ToArray(),
-					Label = label,
+					Label = (UInt32)label,
 					// Metadata for backtesting, not used by training
 					Ticker = ticker,
 					Date = currentDate,
@@ -240,16 +242,15 @@ namespace Fundamentalist.Trainer
 				var metrics = mlContext.MulticlassClassification.Evaluate(predictions);
 				Console.WriteLine($"  MacroAccuracy: {metrics.MacroAccuracy:P2}");
 				Console.WriteLine($"  MicroAccuracy: {metrics.MicroAccuracy:P2}");
-				Console.WriteLine($"  Underperform LogLoss: {metrics.PerClassLogLoss[0]:F3}");
-				Console.WriteLine($"  Neutral LogLoss: {metrics.PerClassLogLoss[1]:F3}");
-				Console.WriteLine($"  Overperform LogLoss: {metrics.PerClassLogLoss[2]:F3}");
+				Console.WriteLine($"  LogLoss: {metrics.LogLoss:F3}");
+				Console.WriteLine($"  LogLossReduction: {metrics.LogLossReduction:F3}");
 				Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
 			}
 		}
 
 		private void SetScores(IDataView predictions)
 		{
-			var predictedLabels = predictions.GetColumn<PerformanceLabelType>("PredictedLabel").ToArray();
+			var predictedLabels = predictions.GetColumn<UInt32>("PredictedLabel").Cast<PerformanceLabelType>().ToArray();
 			int i = 0;
 			foreach (var dataPoint in _testData)
 			{
