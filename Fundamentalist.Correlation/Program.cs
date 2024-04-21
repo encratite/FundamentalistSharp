@@ -6,25 +6,26 @@ namespace Fundamentalist.Correlation
 	{
 		private static void Main(string[] arguments)
 		{
-			if (arguments.Length != 9)
+			if (arguments.Length != 10)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
-				Console.WriteLine($"{name.Name} <path to earnings .csv file> <price data directory> <forecast days> <number of features> <correlation output> <presence output> <appearance output> <disappearance output> <feature count output>");
+				Console.WriteLine($"{name.Name} <path to earnings .csv file> <price data directory> <forecast days> <number of features> <nominal correlation output> <relative correlation output> <presence output> <appearance output> <disappearance output> <feature count output>");
 				return;
 			}
 			string earningsPath = arguments[0];
 			string priceDataDirectory = arguments[1];
 			int forecastDays = int.Parse(arguments[2]);
 			int features = int.Parse(arguments[3]);
-			string correlationOutput = arguments[4];
-			string presenceOutput = arguments[5];
-			string appearanceOutput = arguments[6];
-			string disappearanceOutput = arguments[7];
-			string featureCountOutput = arguments[8];
+			string nominalCorrelationOutput = arguments[4];
+			string relativeCorrelationOutput = arguments[5];
+			string presenceOutput = arguments[6];
+			string appearanceOutput = arguments[7];
+			string disappearanceOutput = arguments[8];
+			string featureCountOutput = arguments[9];
 
-			decimal minimumObservationRatio = 0.01m;
+			int minimumCount = 1000;
 			DateTime fromDate = new DateTime(2010, 1, 1);
 			DateTime toDate = new DateTime(2023, 1, 1);
 			string logDirectory = null;
@@ -33,11 +34,12 @@ namespace Fundamentalist.Correlation
 				earningsPath,
 				priceDataDirectory,
 				features,
-				minimumObservationRatio,
+				minimumCount,
 				fromDate,
 				toDate,
 				forecastDays,
-				correlationOutput,
+				nominalCorrelationOutput,
+				relativeCorrelationOutput,
 				presenceOutput,
 				appearanceOutput,
 				disappearanceOutput,

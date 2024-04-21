@@ -7,16 +7,16 @@ namespace Fundamentalist.Correlation
 	internal class CorrelationAnalyzer
 	{
 		private int _features;
-		private decimal _minimumObservationRatio;
 		private DateTime _fromDate;
 		private DateTime _toDate;
 		private int _forecastDays;
 		private int _earningsCount;
-		private int _minimumAppearanceCount = 1000;
+		private int _minimumCount;
 
 		private string _earningsPath;
 		private string _priceDataDirectory;
-		string _correlationOutput;
+		string _nominalCorrelationOutput;
+		string _relativeCorrelationOutput;
 		string _presenceOutput;
 		string _appearanceOutput;
 		string _disappearanceOutput;
@@ -33,11 +33,12 @@ namespace Fundamentalist.Correlation
 			string earningsPath,
 			string priceDataDirectory,
 			int features,
-			decimal minimumObservationRatio,
+			int minimumCount,
 			DateTime fromDate,
 			DateTime toDate,
 			int forecastDays,
-			string correlationOutput,
+			string nominalCorrelationOutput,
+			string relativeCorrelationOutput,
 			string presenceOutput,
 			string appearanceOutput,
 			string disappearanceOutput,
@@ -47,11 +48,12 @@ namespace Fundamentalist.Correlation
 			_earningsPath = earningsPath;
 			_priceDataDirectory = priceDataDirectory;
 			_features = features;
-			_minimumObservationRatio = minimumObservationRatio;
+			_minimumCount = minimumCount;
 			_fromDate = fromDate;
 			_toDate = toDate;
 			_forecastDays = forecastDays;
-			_correlationOutput = correlationOutput;
+			_nominalCorrelationOutput = nominalCorrelationOutput;
+			_relativeCorrelationOutput = relativeCorrelationOutput;
 			_presenceOutput = presenceOutput;
 			_appearanceOutput = appearanceOutput;
 			_disappearanceOutput = disappearanceOutput;
@@ -84,7 +86,7 @@ namespace Fundamentalist.Correlation
 
 		private void CalculateCoefficients()
 		{
-			Console.WriteLine($"Calculating coefficients from {_features} features with a minimum observation ratio of {_minimumObservationRatio:P1} from {_fromDate.ToShortDateString()} to {_toDate.ToShortDateString()} with a performance lookahead time of {_forecastDays} working days");
+			Console.WriteLine($"Calculating coefficients from {_features} features from {_fromDate.ToShortDateString()} to {_toDate.ToShortDateString()} with a performance lookahead time of {_forecastDays} working days");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 
@@ -105,17 +107,13 @@ namespace Fundamentalist.Correlation
 			GatherStats();
 			foreach (var stats in _stats)
 				stats.SetGains();
-			var correlationResults = GetCorrelationResults(_earningsCount);
+			var nominalCorrelationResults = GetCorrelationResults(x => x.NominalObservations);
+			var relativeCorrelationResults = GetCorrelationResults(x => x.RelativeObservations);
 
 			stopwatch.Stop();
-			Console.WriteLine($"Calculated {correlationResults.Count} coefficients from {_earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
-
-			using (var writer = new StreamWriter(_correlationOutput))
-			{
-				var sortedResults = correlationResults.OrderByDescending(x => x.Coefficient);
-				foreach (var result in sortedResults)
-					writer.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / _earningsCount:P2})");
-			}
+			Console.WriteLine($"Calculated {nominalCorrelationResults.Count} nominal coefficients and {relativeCorrelationResults.Count} relative coefficients from {_earningsCount} SEC filings in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			WriteCorrelationResults(nominalCorrelationResults, _nominalCorrelationOutput);
+			WriteCorrelationResults(relativeCorrelationResults, _relativeCorrelationOutput);
 
 			LogAppearanceGains(_presenceOutput, (x) => x.MeanPresenceGain, (x) => x.PresenceGains);
 			LogAppearanceGains(_appearanceOutput, (x) => x.MeanAppearanceGain, (x) => x.AppearanceGains);
@@ -142,11 +140,21 @@ namespace Fundamentalist.Correlation
 			}
 		}
 
+		private void WriteCorrelationResults(ConcurrentBag<CorrelationResult> relativeCorrelationResults, string path)
+		{
+			using (var writer = new StreamWriter(path))
+			{
+				var sortedResults = relativeCorrelationResults.OrderByDescending(x => x.Coefficient);
+				foreach (var result in sortedResults)
+					writer.WriteLine($"{result.Feature}: {result.Coefficient:F3} ({result.Observations}, {(decimal)result.Observations / _earningsCount:P2})");
+			}
+		}
+
 		private void LogAppearanceGains(string path, Func<FeatureStats, float?> meanSelector, Func<FeatureStats, ConcurrentBag<float>> bagSelector)
 		{
 			using (var writer = new StreamWriter(path))
 			{
-				var sortedResults = _stats.Where(x => meanSelector(x).HasValue && bagSelector(x).Count > _minimumAppearanceCount).OrderByDescending(meanSelector);
+				var sortedResults = _stats.Where(x => meanSelector(x).HasValue && bagSelector(x).Count > _minimumCount).OrderByDescending(meanSelector);
 				foreach (var result in sortedResults)
 					writer.WriteLine($"{result.Name}: {meanSelector(result):F3} ({bagSelector(result).Count})");
 			}
@@ -181,6 +189,9 @@ namespace Fundamentalist.Correlation
 							{
 								featureStats.PresenceGains.Add(adjustedChange);
 								count++;
+								float nominalValue = features[i];
+								var observation = new Observation(nominalValue, adjustedChange);
+								featureStats.NominalObservations.Add(observation);
 							}
 						}
 						var featureCount = new FeatureCountSample(count, adjustedChange);
@@ -195,9 +206,9 @@ namespace Fundamentalist.Correlation
 								var featureStats = _stats[i];
 								if (hasPrevious && hasCurrent)
 								{
-									float xCurrent = GetChange(previousFeatures[i], features[i]);
-									var observation = new Observation(xCurrent, adjustedChange);
-									featureStats.Observations.Add(observation);
+									float featureChange = GetChange(previousFeatures[i], features[i]);
+									var observation = new Observation(featureChange, adjustedChange);
+									featureStats.RelativeObservations.Add(observation);
 								}
 								else if (!hasPrevious && hasCurrent)
 									featureStats.AppearanceGains.Add(adjustedChange);
@@ -211,15 +222,15 @@ namespace Fundamentalist.Correlation
 			});
 		}
 
-		private ConcurrentBag<CorrelationResult> GetCorrelationResults(int earningsCount)
+		private ConcurrentBag<CorrelationResult> GetCorrelationResults(Func<FeatureStats, ConcurrentBag<Observation>> selector)
 		{
 			var results = new ConcurrentBag<CorrelationResult>();
 			Parallel.For(0, _features, i =>
 			{
 				var featureStats = _stats[i];
 				string name = featureStats.Name;
-				var observations = _stats[i].Observations.ToArray();
-				if ((decimal)observations.Length / earningsCount < _minimumObservationRatio)
+				var observations = selector(_stats[i]).ToArray();
+				if (observations.Length < _minimumCount)
 					return;
 				decimal coefficient = GetSpearmanCoefficient(observations);
 				var result = new CorrelationResult(name, coefficient, observations.Length);

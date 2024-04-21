@@ -5,7 +5,8 @@ namespace Fundamentalist.Correlation
 	internal class FeatureStats
 	{
 		public string Name { get; set; }
-		public ConcurrentBag<Observation> Observations { get; set; } = new ConcurrentBag<Observation>();
+		public ConcurrentBag<Observation> NominalObservations { get; set; } = new ConcurrentBag<Observation>();
+		public ConcurrentBag<Observation> RelativeObservations { get; set; } = new ConcurrentBag<Observation>();
 		public ConcurrentBag<float> PresenceGains { get; set; } = new ConcurrentBag<float>();
 		public ConcurrentBag<float> AppearanceGains { get; set; } = new ConcurrentBag<float>();
 		public ConcurrentBag<float> DisappearanceGains { get; set; } = new ConcurrentBag<float>();
