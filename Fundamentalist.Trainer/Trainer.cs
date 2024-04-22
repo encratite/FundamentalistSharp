@@ -3,9 +3,17 @@ using Fundamentalist.Trainer.Algorithm;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Fundamentalist.Trainer
 {
+	internal enum EarningsFeatureMode
+	{
+		Common,
+		NominalCorrelation,
+		Presence
+	}
+
 	internal class Trainer
 	{
 		private const int PriceDataMinimum = 200;
@@ -22,6 +30,9 @@ namespace Fundamentalist.Trainer
 		private List<DataPoint> _trainingData;
 		private List<DataPoint> _testData;
 
+		private HashSet<int> _nominalCorrelationFeatures;
+		private HashSet<int> _presenceFeatures;
+
 		public void Run(TrainerOptions options, string earningsPath, string priceDataDirectory)
 		{
 			_options = options;
@@ -29,6 +40,8 @@ namespace Fundamentalist.Trainer
 			_priceDataDirectory = priceDataDirectory;
 
 			LoadIndex();
+			_nominalCorrelationFeatures = LoadFeatureIndices(_options.NominalCorrelationPath, _options.NominalCorrelationLimit);
+			_presenceFeatures = LoadFeatureIndices(_options.PresencePath, _options.PresenceLimit);
 			GetDataPoints();
 
 			var backtestLog = new List<PerformanceData>();
@@ -40,122 +53,37 @@ namespace Fundamentalist.Trainer
 
 			var algorithms = new IAlgorithm[]
 			{
+				// General models:
 				/*
-				new LightLgbm(20, null, 10, 1000),
-				new LightLgbm(30, null, 10, 1000),
-				new LightLgbm(40, null, 10, 1000),
-				new LightLgbm(50, null, 10, 1000),
-				new LightLgbm(60, null, 10, 1000),
-				new LightLgbm(70, null, 10, 1000),
-				new LightLgbm(80, null, 10, 1000),
-				new LightLgbm(90, null, 10, 1000),
-				new LightLgbm(100, null, 10, 1000),
-				*/
-				/*
-				new LightLgbm(70, null, 2, 1000),
-				new LightLgbm(70, null, 4, 1000),
-				new LightLgbm(70, null, 6, 1000),
-				new LightLgbm(70, null, 8, 1000),
-				new LightLgbm(70, null, 10, 1000),
-				new LightLgbm(70, null, 12, 1000),
-				new LightLgbm(70, null, 14, 1000),
-				*/
-				/*
-				new LightLgbm(70, null, 10, 10),
-				new LightLgbm(70, null, 10, 50),
-				new LightLgbm(70, null, 10, 100),
-				new LightLgbm(70, null, 10, 500),
-				*/
-				// new LightLgbm(50, null, 10, 100),
-				// new LightLgbm(75, null, 10, 100),
-				// new LightLgbm(100, null, 10, 100),
-				// new LightLgbm(250, null, 10, 100)
-				/*
-				new LightLgbm(75, null, 20, 100),
-				new LightLgbm(75, null, 50, 100),
-				new LightLgbm(75, null, 100, 100),
-				*/
-				// Best for 10000 features?
-				// new LightLgbm(75, null, 10, 100)
-				/*
-				new LightLgbm(10, null, 10, 100),
-				new LightLgbm(25, null, 10, 100),
-				new LightLgbm(50, null, 10, 100),
-				new LightLgbm(75, null, 10, 100),
-				new LightLgbm(100, null, 10, 100),
-				*/
-				/*
-				new LightLgbm(250, null, 10, 100),
-				new LightLgbm(500, null, 10, 100),
-				new LightLgbm(750, null, 10, 100),
-				new LightLgbm(1000, null, 10, 100),
-				*/
-				// new LightLgbm(75, null, 10, 100),
-				// new FastTree(false, 20, 100, 10, 0.2),
-				/*
+				new LightLgbm(100, null, null, null),
 				new FastTree(false, 20, 100, 20, 0.2),
-				// Best:
-				new FastTree(false, 20, 100, 30, 0.2),
-				new FastTree(false, 20, 100, 40, 0.2),
-				new FastTree(false, 20, 100, 50, 0.2),
-				new FastTree(false, 20, 100, 100, 0.2),
-				new FastTree(false, 20, 100, 1000, 0.2),
-				*/
-				// new FastTree(false, 20, 10, 30, 0.2),
-				// new FastTree(false, 20, 25, 30, 0.2),
-				/*
-				new FastTree(false, 20, 50, 30, 0.2),
-				new FastTree(false, 20, 150, 30, 0.2),
-				new FastTree(false, 20, 500, 30, 0.2),
-				new FastTree(false, 20, 1000, 30, 0.2),
-				new FastTree(false, 10, 100, 30, 0.2),
-				new FastTree(false, 25, 100, 30, 0.2),
-				new FastTree(false, 50, 100, 30, 0.2),
-				new FastTree(false, 100, 100, 30, 0.2),
-				new FastTree(false, 100, 100, 100, 0.2),
-				*/
-				/*
-				new FastTree(false, 10, 100, 30, 0.15),
-				new FastTree(false, 10, 100, 30, 0.1),
-				new FastTree(false, 10, 100, 30, 0.25),
-				new FastTree(false, 10, 100, 30, 0.5),
-				new FastTree(false, 10, 100, 30, 0.01),
-				new FastTree(false, 10, 200, 30, 0.01),
-				new FastTree(false, 10, 300, 30, 0.01),
-				new FastTree(false, 10, 400, 30, 0.01),
-				new FastTree(false, 10, 500, 30, 0.01),
-				*/
-				/*
 				new FastForest(false, 20, 100, 10),
-				new FastForest(false, 30, 100, 10),
-				new FastForest(false, 50, 100, 10),
-				new FastForest(false, 100, 100, 10),
-				new FastForest(false, 500, 100, 10),
-				new FastForest(false, 1000, 100, 10),
-				new FastForest(false, 20, 50, 10),
-				new FastForest(false, 20, 100, 10),
-				new FastForest(false, 20, 250, 10),
-				new FastForest(false, 20, 500, 10),
-				new FastForest(false, 20, 1000, 10),
-				new FastForest(false, 20, 500, 10),
-				*/
-				new Gam(false, 10, 255, 0.002),
-				new Gam(false, 25, 255, 0.002),
-				new Gam(false, 50, 255, 0.002),
 				new Gam(false, 100, 255, 0.002),
-				new Gam(false, 10, 500, 0.003),
-				new Gam(false, 25, 500, 0.004),
-				new Gam(false, 50, 500, 0.005),
-				new Gam(false, 100, 500, 0.006),
-				new Gam(false, 200, 500, 0.007),
-				new Gam(false, 300, 500, 0.008),
-				new Gam(false, 400, 500, 0.009),
-				new Gam(false, 500, 500, 0.01),
+				*/
+
+				/*
+				new LightLgbm(100, null, null, null),
+				new LightLgbm(100, null, 500, 100),
+				new LightLgbm(1000, null, 500, 100),
+				*/
+
+				new LightLgbm(1000, null, 100, 100),
+				new LightLgbm(1000, null, 200, 100),
+				new LightLgbm(1000, null, 300, 100),
+				new LightLgbm(1000, null, 400, 100),
+
+				// new Gam(false, 10000, 255, 0.002),
+
+				// Best for common features:
+				// new LightLgbm(1000, null, 5000, 1000),
+
+				// Best for nominal correlation features:
+				// new LightLgbm(500, null, 250, 100),
 			};
 			Backtest backtest = null;
 			foreach (var algorithm in algorithms)
 			{
-				TrainAndEvaluateModel(algorithm);
+				TrainAndEvaluateModelForCommonFeatures(algorithm);
 				/*
 				backtest = new Backtest(_testData, _indexPriceData);
 				decimal performance = backtest.Run();
@@ -201,6 +129,25 @@ namespace Fundamentalist.Trainer
 			}
 		}
 
+		private HashSet<int> LoadFeatureIndices(string path, decimal limit)
+		{
+			var output = new HashSet<int>();
+			var lines = File.ReadAllLines(path);
+			var pattern = new Regex(@"^.+? \((?<index>\d+)\): (?<correlation>.+?) ");
+			foreach (string line in lines)
+			{
+				var match = pattern.Match(line);
+				if (!match.Success)
+					throw new Exception("Unable to parse line in nominal correlation features");
+				var groups = match.Groups;
+				int index = int.Parse(groups["index"].Value);
+				decimal correlation = decimal.Parse(groups["correlation"].Value);
+				if (Math.Abs(correlation) >= limit)
+					output.Add(index);
+			}
+			return output;
+		}
+
 		private void GetDataPoints()
 		{
 			var stopwatch = new Stopwatch();
@@ -221,8 +168,9 @@ namespace Fundamentalist.Trainer
 			{
 				string ticker = x.Key;
 				var cacheEntry = x.Value;
-				GenerateDataPoints(ticker, cacheEntry, null, _options.TestDate, _trainingData);
-				GenerateDataPoints(ticker, cacheEntry, _options.TestDate, null, _testData);
+				var mode = EarningsFeatureMode.Presence;
+				GenerateDataPointsFromEarnings(ticker, cacheEntry, null, _options.TestDate, _trainingData, mode);
+				GenerateDataPointsFromEarnings(ticker, cacheEntry, _options.TestDate, null, _testData, mode);
 			});
 			var sortData = (List<DataPoint> data) => data.Sort((x, y) => x.Date.CompareTo(y.Date));
 			sortData(_trainingData);
@@ -249,7 +197,7 @@ namespace Fundamentalist.Trainer
 				(!to.HasValue || date.Value < to.Value);
 		}
 
-		private void GenerateDataPoints(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
+		private void GenerateDataPointsFromEarnings(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints, EarningsFeatureMode mode)
 		{
 			var earnings = tickerCacheEntry.Earnings.Where(x => InRange(x.Key, from, to) && x.Key >= _options.TrainingDate).ToList();
 			var priceData = tickerCacheEntry.PriceData;
@@ -258,10 +206,10 @@ namespace Fundamentalist.Trainer
 
 			foreach (var currentEarnings in earnings)
 			{
-				DateTime currentDate = currentEarnings.Key + TimeSpan.FromDays(_options.ForecastDays);
-				if (!IsWorkingDay(currentDate))
-					continue;
-				DateTime futureDate = GetNextWorkingDay(currentDate + TimeSpan.FromDays(1));
+				DateTime currentDate = currentEarnings.Key + TimeSpan.FromDays(_options.DaysSinceEarnings);
+				while (currentDate.DayOfWeek != DayOfWeek.Monday)
+					currentDate += TimeSpan.FromDays(1);
+				DateTime futureDate = GetNextWorkingDay(currentDate + TimeSpan.FromDays(_options.ForecastDays));
 				var earningsFeatures = currentEarnings.Value;
 
 				decimal? currentPrice = GetOpenPrice(currentDate, priceData);
@@ -281,12 +229,13 @@ namespace Fundamentalist.Trainer
 					continue;
 
 				decimal performance = futurePrice.Value / currentPrice.Value - futureIndexPrice.Value / currentIndexPrice.Value;
-				var generalFeatures = new float[]
-				{
-					(float)currentDate.DayOfWeek
-				};
-				var priceDataFeatures = TechnicalIndicators.GetFeatures(currentPrice, pastPrices);
-				var features = generalFeatures.Concat(earningsFeatures).Concat(priceDataFeatures);
+				float[] features = null;
+				if (mode == EarningsFeatureMode.Common)
+					features = earningsFeatures.Take(_options.CommonFeatures).ToArray();
+				else if (mode == EarningsFeatureMode.NominalCorrelation)
+					features = GetIndexBasedFeatures(earningsFeatures, false, _nominalCorrelationFeatures);
+				else if (mode == EarningsFeatureMode.Presence)
+					features = GetIndexBasedFeatures(earningsFeatures, true, _presenceFeatures);
 				PerformanceLabelType label = PerformanceLabelType.Neutral;
 				if (performance > _options.OutperformLimit)
 					label = PerformanceLabelType.Outperform;
@@ -294,7 +243,7 @@ namespace Fundamentalist.Trainer
 					label = PerformanceLabelType.Underperform;
 				var dataPoint = new DataPoint
 				{
-					Features = features.ToArray(),
+					Features = features,
 					Label = (UInt32)label,
 					// Metadata for backtesting, not used by training
 					Ticker = ticker,
@@ -304,6 +253,23 @@ namespace Fundamentalist.Trainer
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
 			}
+		}
+
+		private float[] GetIndexBasedFeatures(float[] earningsFeatures, bool sign, HashSet<int> indices)
+		{
+			float[] features;
+			var nominalCorrelationFeatures = new float[indices.Count];
+			int offset = 0;
+			foreach (int index in indices)
+			{
+				float feature = earningsFeatures[index];
+				if (sign)
+					feature = feature != 0 ? 1f : 0f;
+				nominalCorrelationFeatures[offset] = feature;
+				offset++;
+			}
+			features = nominalCorrelationFeatures;
+			return features;
 		}
 
 		private bool IsWorkingDay(DateTime date)
@@ -320,7 +286,7 @@ namespace Fundamentalist.Trainer
 			return date;
 		}
 
-		private void TrainAndEvaluateModel(IAlgorithm algorithm)
+		private void TrainAndEvaluateModelForCommonFeatures(IAlgorithm algorithm)
 		{
 			var mlContext = new MLContext();
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
