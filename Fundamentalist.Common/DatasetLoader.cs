@@ -23,7 +23,13 @@
 			_badTickers = 0;
 			_goodTickers = 0;
 			LoadEarnings(earningsPath, features, from, to, featureSelection);
-			LoadPriceData(priceDataDirectory, priceDataMinimum);
+			DateTime? priceFrom = from;
+			if (priceFrom.HasValue)
+			{
+				// Enable common SMA/EMA calculations
+				priceFrom = new DateTime(priceFrom.Value.Year - 1, priceFrom.Value.Month, priceFrom.Value.Day);
+			}
+			LoadPriceData(priceDataDirectory, priceDataMinimum, priceFrom, to);
 		}
 
 		private void LoadEarnings(string earningsPath, int? features, DateTime? from, DateTime? to, HashSet<int> featureSelection)
@@ -42,7 +48,7 @@
 			}
 		}
 
-		private void LoadPriceData(string priceDataDirectory, int priceDataMinimum)
+		private void LoadPriceData(string priceDataDirectory, int priceDataMinimum, DateTime? from, DateTime? to)
 		{
 			var options = new ParallelOptions
 			{
@@ -52,7 +58,7 @@
 			{
 				string ticker = x.Key;
 				var cacheEntry = x.Value;
-				var priceData = DataReader.GetPriceData(ticker, priceDataDirectory);
+				var priceData = DataReader.GetPriceData(ticker, priceDataDirectory, from, to);
 				if (priceData == null || priceData.Count < priceDataMinimum)
 				{
 					Cache.Remove(ticker);

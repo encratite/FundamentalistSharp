@@ -23,10 +23,5 @@ namespace Fundamentalist.Trainer
 		[NoColumn]
 		public DateTime Date { get; set; }
 
-		[NoColumn]
-		public SortedList<DateTime, PriceData> PriceData { get; set; }
-
-		[NoColumn]
-		public PerformanceLabelType? PredictedLabel { get; set; }
 	}
 }

@@ -19,6 +19,8 @@
 		public string PresencePath { get; set; }
 		public decimal PresenceLimit { get; set; }
 
+		public decimal MinimumPrice { get; set; }
+
 		public void Print()
 		{
 			Console.WriteLine($"  DaysSinceEarnings: {DaysSinceEarnings}");
@@ -37,6 +39,8 @@
 
 			Console.WriteLine($"  PresencePath: {PresencePath}");
 			Console.WriteLine($"  PresenceLimit: {PresenceLimit}");
+
+			Console.WriteLine($"  MinimumPrice: {MinimumPrice}");
 		}
 	}
 }

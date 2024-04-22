@@ -34,7 +34,7 @@
 			return relativeStrengthIndex;
 		}
 
-		public static List<float> GetFeatures(decimal? currentPrice, float[] pastPrices)
+		public static float[] GetFeatures(float[] pastPrices)
 		{
 			float sma10 = GetSimpleMovingAverage(10, pastPrices);
 			float sma20 = GetSimpleMovingAverage(20, pastPrices);
@@ -46,20 +46,19 @@
 			float ema200 = GetExponentialMovingAverage(200, pastPrices);
 			float macd = ema12 - ema26;
 			float rsi = GetRelativeStrengthIndex(14, pastPrices);
-			var priceDataFeatures = new List<float>
-				{
-					(float)currentPrice.Value,
-					sma10,
-					sma20,
-					sma50,
-					sma200,
-					ema12,
-					ema26,
-					ema50,
-					ema200,
-					macd,
-					rsi
-				};
+			var priceDataFeatures = new float[]
+			{
+				sma10,
+				sma20,
+				sma50,
+				sma200,
+				ema12,
+				ema26,
+				ema50,
+				ema200,
+				macd,
+				rsi
+			};
 			return priceDataFeatures;
 		}
 	}

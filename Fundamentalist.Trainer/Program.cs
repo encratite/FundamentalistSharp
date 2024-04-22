@@ -44,7 +44,8 @@ namespace Fundamentalist.Trainer
 				{
 					DaysSinceEarnings = 6,
 					ForecastDays = 7,
-					TrainingDate = new DateTime(2018, 1, 1),
+					// TrainingDate = new DateTime(2018, 1, 1),
+					TrainingDate = new DateTime(2022, 1, 1),
 					TestDate = new DateTime(2023, 1, 1),
 					OutperformLimit = 0.02m,
 					UnderperformLimit = -0.02m,
@@ -52,7 +53,8 @@ namespace Fundamentalist.Trainer
 					NominalCorrelationPath = nominalCorrelationPath,
 					NominalCorrelationLimit = 0.03m,
 					PresencePath = presencePath,
-					PresenceLimit = 0.02m
+					PresenceLimit = 0.02m,
+					MinimumPrice = 1.0m
 				};
 				trainer.Run(options, earningsPath, priceDataDirectory);
 			}

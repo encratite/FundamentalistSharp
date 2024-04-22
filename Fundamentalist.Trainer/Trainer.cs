@@ -27,8 +27,10 @@ namespace Fundamentalist.Trainer
 		private DatasetLoader _datasetLoader = new DatasetLoader();
 		private Dictionary<string, TickerCacheEntry> _tickerCache;
 
-		private List<DataPoint> _trainingData;
-		private List<DataPoint> _testData;
+		private List<DataPoint> _commonFeaturesTrainingData;
+		private List<DataPoint> _commonFeaturesTestData;
+		private List<DataPoint> _priceDataTrainingData;
+		private List<DataPoint> _priceDataTestData;
 
 		private HashSet<int> _nominalCorrelationFeatures;
 		private HashSet<int> _presenceFeatures;
@@ -44,63 +46,18 @@ namespace Fundamentalist.Trainer
 			_presenceFeatures = LoadFeatureIndices(_options.PresencePath, _options.PresenceLimit);
 			GetDataPoints();
 
-			var backtestLog = new List<PerformanceData>();
-			var logPerformance = (string description, decimal performance) =>
-			{
-				var performanceData = new PerformanceData(description, performance);
-				backtestLog.Add(performanceData);
-			};
+			var commonFeaturesAlgorithm = new LightLgbm(1000, null, 5000, 1000);
+			var priceDataAlgorithm = new LightLgbm(1000, null, 300, 100);
+			var metaAlgorithm = new LightLgbm(1000, null, 250, 100);
+			var commonFeaturesPredictions = TrainAndEvaluateModel(_commonFeaturesTrainingData, _commonFeaturesTestData, commonFeaturesAlgorithm);
+			var priceDataPredictions = TrainAndEvaluateModel(_priceDataTrainingData, _priceDataTestData, priceDataAlgorithm);
+			var metaTrainingData = CreateMetaDataPoints(_commonFeaturesTrainingData, commonFeaturesPredictions.TrainingPredictions);
+			var metaTestData = CreateMetaDataPoints(_commonFeaturesTestData, commonFeaturesPredictions.TestPredictions);
+			MergeMetaDataPoints(_priceDataTrainingData, priceDataPredictions.TrainingPredictions, metaTrainingData);
+			MergeMetaDataPoints(_priceDataTestData, priceDataPredictions.TestPredictions, metaTestData);
+			TrainAndEvaluateModel(metaTrainingData, metaTestData, metaAlgorithm);
 
-			var algorithms = new IAlgorithm[]
-			{
-				// General models:
-				/*
-				new LightLgbm(100, null, null, null),
-				new FastTree(false, 20, 100, 20, 0.2),
-				new FastForest(false, 20, 100, 10),
-				new Gam(false, 100, 255, 0.002),
-				*/
-
-				/*
-				new LightLgbm(100, null, null, null),
-				new LightLgbm(100, null, 500, 100),
-				new LightLgbm(1000, null, 500, 100),
-				*/
-
-				new LightLgbm(1000, null, 100, 100),
-				new LightLgbm(1000, null, 200, 100),
-				new LightLgbm(1000, null, 300, 100),
-				new LightLgbm(1000, null, 400, 100),
-
-				// new Gam(false, 10000, 255, 0.002),
-
-				// Best for common features:
-				// new LightLgbm(1000, null, 5000, 1000),
-
-				// Best for nominal correlation features:
-				// new LightLgbm(500, null, 250, 100),
-			};
-			Backtest backtest = null;
-			foreach (var algorithm in algorithms)
-			{
-				TrainAndEvaluateModelForCommonFeatures(algorithm);
-				/*
-				backtest = new Backtest(_testData, _indexPriceData);
-				decimal performance = backtest.Run();
-				logPerformance(algorithm.Name, performance);
-				*/
-			}
-
-			if (backtest != null)
-			{
-				logPerformance("S&P 500", backtest.IndexPerformance);
-				Console.WriteLine("Options used:");
-				_options.Print();
-				Console.WriteLine("Performance summary:");
-				int maxPadding = backtestLog.MaxBy(x => x.Description.Length).Description.Length;
-				foreach (var entry in backtestLog)
-					Console.WriteLine($"  {entry.Description.PadRight(maxPadding)} {entry.Performance:#.00%}");
-			}
+			FreeData();
 		}
 
 		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
@@ -119,6 +76,14 @@ namespace Fundamentalist.Trainer
 				return output.Close;
 			else
 				return null;
+		}
+
+		private void FreeData()
+		{
+			_commonFeaturesTrainingData = null;
+			_commonFeaturesTestData = null;
+			_priceDataTrainingData = null;
+			_priceDataTestData = null;
 		}
 
 		private void LoadIndex()
@@ -152,8 +117,6 @@ namespace Fundamentalist.Trainer
 		{
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			_trainingData = new List<DataPoint>();
-			_testData = new List<DataPoint>();
 			if (_tickerCache == null)
 			{
 				Console.WriteLine("Loading datasets");
@@ -164,24 +127,32 @@ namespace Fundamentalist.Trainer
 			}
 			Console.WriteLine("Generating data points");
 			stopwatch.Restart();
+			_commonFeaturesTrainingData = new List<DataPoint>();
+			_commonFeaturesTestData = new List<DataPoint>();
+			_priceDataTrainingData = new List<DataPoint>();
+			_priceDataTestData = new List<DataPoint>();
 			Parallel.ForEach(_tickerCache, x =>
 			{
 				string ticker = x.Key;
 				var cacheEntry = x.Value;
-				var mode = EarningsFeatureMode.Presence;
-				GenerateDataPointsFromEarnings(ticker, cacheEntry, null, _options.TestDate, _trainingData, mode);
-				GenerateDataPointsFromEarnings(ticker, cacheEntry, _options.TestDate, null, _testData, mode);
+				var mode = EarningsFeatureMode.Common;
+				GenerateDataPointsFromEarnings(ticker, cacheEntry, null, _options.TestDate, _commonFeaturesTrainingData, mode);
+				GenerateDataPointsFromEarnings(ticker, cacheEntry, _options.TestDate, null, _commonFeaturesTestData, mode);
+				GenerateDataPointsFromPriceData(ticker, cacheEntry, null, _options.TestDate, _priceDataTrainingData);
+				GenerateDataPointsFromPriceData(ticker, cacheEntry, _options.TestDate, null, _priceDataTestData);
 			});
 			var sortData = (List<DataPoint> data) => data.Sort((x, y) => x.Date.CompareTo(y.Date));
-			sortData(_trainingData);
-			sortData(_testData);
+			sortData(_commonFeaturesTrainingData);
+			sortData(_commonFeaturesTestData);
+			sortData(_priceDataTrainingData);
+			sortData(_priceDataTestData);
 			stopwatch.Stop();
 			Console.WriteLine($"Removed {_datasetLoader.GoodTickers} tickers ({(decimal)_datasetLoader.BadTickers / (_datasetLoader.BadTickers + _datasetLoader.GoodTickers):P1}) due to insufficient price data");
-			decimal trainingOutperform = GetLabelratio(PerformanceLabelType.Outperform, _trainingData);
-			decimal trainingUnderperform = GetLabelratio(PerformanceLabelType.Underperform, _trainingData);
-			decimal testOutperform = GetLabelratio(PerformanceLabelType.Outperform, _testData);
-			decimal testUnderperform = GetLabelratio(PerformanceLabelType.Underperform, _testData);
-			Console.WriteLine($"Generated {_trainingData.Count} data points of training data ({trainingOutperform:P2} outperform, {trainingUnderperform:P2} underperform) and {_testData.Count} data points of test data ({testOutperform:P2} outperform, {testUnderperform:P2} underperform) in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			decimal trainingOutperform = GetLabelratio(PerformanceLabelType.Outperform, _commonFeaturesTrainingData);
+			decimal trainingUnderperform = GetLabelratio(PerformanceLabelType.Underperform, _commonFeaturesTrainingData);
+			decimal testOutperform = GetLabelratio(PerformanceLabelType.Outperform, _commonFeaturesTestData);
+			decimal testUnderperform = GetLabelratio(PerformanceLabelType.Underperform, _commonFeaturesTestData);
+			Console.WriteLine($"Generated {_commonFeaturesTrainingData.Count} data points of training data ({trainingOutperform:P2} outperform, {trainingUnderperform:P2} underperform) and {_commonFeaturesTestData.Count} data points of test data ({testOutperform:P2} outperform, {testUnderperform:P2} underperform) in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
 		private decimal GetLabelratio(PerformanceLabelType label, List<DataPoint> dataPoints)
@@ -206,29 +177,14 @@ namespace Fundamentalist.Trainer
 
 			foreach (var currentEarnings in earnings)
 			{
+				var earningsFeatures = currentEarnings.Value;
 				DateTime currentDate = currentEarnings.Key + TimeSpan.FromDays(_options.DaysSinceEarnings);
 				while (currentDate.DayOfWeek != DayOfWeek.Monday)
 					currentDate += TimeSpan.FromDays(1);
 				DateTime futureDate = GetNextWorkingDay(currentDate + TimeSpan.FromDays(_options.ForecastDays));
-				var earningsFeatures = currentEarnings.Value;
-
-				decimal? currentPrice = GetOpenPrice(currentDate, priceData);
-				if (!currentPrice.HasValue)
+				decimal? performance = GetPerformanceRelativeToMarket(priceData, currentDate, futureDate);
+				if (!performance.HasValue)
 					continue;
-				decimal? futurePrice = GetOpenPrice(futureDate, priceData);
-				if (!futurePrice.HasValue)
-					continue;
-				decimal? currentIndexPrice = GetOpenPrice(currentDate, _indexPriceData);
-				if (!currentIndexPrice.HasValue)
-					continue;
-				decimal? futureIndexPrice = GetOpenPrice(futureDate, _indexPriceData);
-				if (!futureIndexPrice.HasValue)
-					continue;
-				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).Select(x => (float)x.Close).ToArray();
-				if (pastPrices.Length < PriceDataMinimum)
-					continue;
-
-				decimal performance = futurePrice.Value / currentPrice.Value - futureIndexPrice.Value / currentIndexPrice.Value;
 				float[] features = null;
 				if (mode == EarningsFeatureMode.Common)
 					features = earningsFeatures.Take(_options.CommonFeatures).ToArray();
@@ -236,11 +192,7 @@ namespace Fundamentalist.Trainer
 					features = GetIndexBasedFeatures(earningsFeatures, false, _nominalCorrelationFeatures);
 				else if (mode == EarningsFeatureMode.Presence)
 					features = GetIndexBasedFeatures(earningsFeatures, true, _presenceFeatures);
-				PerformanceLabelType label = PerformanceLabelType.Neutral;
-				if (performance > _options.OutperformLimit)
-					label = PerformanceLabelType.Outperform;
-				else if (performance < _options.UnderperformLimit)
-					label = PerformanceLabelType.Underperform;
+				var label = GetLabel(performance.Value);
 				var dataPoint = new DataPoint
 				{
 					Features = features,
@@ -248,11 +200,95 @@ namespace Fundamentalist.Trainer
 					// Metadata for backtesting, not used by training
 					Ticker = ticker,
 					Date = currentDate,
-					PriceData = priceData
 				};
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
 			}
+		}
+
+		private PerformanceLabelType GetLabel(decimal performance)
+		{
+			PerformanceLabelType label = PerformanceLabelType.Neutral;
+			if (performance > _options.OutperformLimit)
+				label = PerformanceLabelType.Outperform;
+			else if (performance < _options.UnderperformLimit)
+				label = PerformanceLabelType.Underperform;
+			return label;
+		}
+
+		private void GenerateDataPointsFromPriceData(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
+		{
+			var priceData = tickerCacheEntry.PriceData;
+			if (priceData == null)
+				return;
+
+			foreach (var pair in priceData)
+			{
+				var currentDate = pair.Key;
+				if (currentDate.DayOfWeek != DayOfWeek.Monday)
+					continue;
+				DateTime futureDate = GetNextWorkingDay(currentDate + TimeSpan.FromDays(_options.ForecastDays));
+				if (!InRange(currentDate, from, to))
+					continue;
+				if (pair.Value.Open < _options.MinimumPrice)
+					continue;
+				var pastPrices = priceData.Values.Where(x => x.Date < currentDate).ToArray();
+				if (pastPrices.Length < PriceDataMinimum)
+					continue;
+				var pastCloses = pastPrices.Select(x => (float)x.Close).ToArray();
+				var technicalIndicatorFeatures = TechnicalIndicators.GetFeatures(pastCloses);
+				var generalFeatures = new float[]
+				{
+					(int)currentDate.DayOfWeek
+				};
+				var ohlcvFeatures = new List<float>();
+				foreach (var price in pastPrices.Take(5))
+				{
+					ohlcvFeatures.AddRange(new float[]
+					{
+						(float)price.Open,
+						(float)price.High,
+						(float)price.Low,
+						(float)price.Close,
+						price.Volume
+					});
+				}
+				decimal? performance = GetPerformanceRelativeToMarket(priceData, currentDate, futureDate);
+				if (!performance.HasValue)
+					continue;
+				var label = GetLabel(performance.Value);
+				var dataPoint = new DataPoint
+				{
+					Features = generalFeatures.Concat(ohlcvFeatures).Concat(technicalIndicatorFeatures).ToArray(),
+					Label = (UInt32)label,
+					// Metadata for backtesting, not used by training
+					Ticker = ticker,
+					Date = currentDate,
+				};
+				lock (dataPoints)
+					dataPoints.Add(dataPoint);
+			}
+		}
+
+		private decimal? GetPerformanceRelativeToMarket(SortedList<DateTime, PriceData> priceData, DateTime currentDate, DateTime futureDate)
+		{
+			decimal? currentPrice = GetOpenPrice(currentDate, priceData);
+			if (!currentPrice.HasValue)
+				return null;
+			decimal? futurePrice = GetOpenPrice(futureDate, priceData);
+			if (!futurePrice.HasValue)
+				return null;
+			decimal? currentIndexPrice = GetOpenPrice(currentDate, _indexPriceData);
+			if (!currentIndexPrice.HasValue)
+				return null;
+			decimal? futureIndexPrice = GetOpenPrice(futureDate, _indexPriceData);
+			if (!futureIndexPrice.HasValue)
+				return null;
+			if (currentPrice.Value < _options.MinimumPrice)
+				return null;
+
+			decimal performance = futurePrice.Value / currentPrice.Value - futureIndexPrice.Value / currentIndexPrice.Value;
+			return performance;
 		}
 
 		private float[] GetIndexBasedFeatures(float[] earningsFeatures, bool sign, HashSet<int> indices)
@@ -286,42 +322,77 @@ namespace Fundamentalist.Trainer
 			return date;
 		}
 
-		private void TrainAndEvaluateModelForCommonFeatures(IAlgorithm algorithm)
+		private Predictions TrainAndEvaluateModel(List<DataPoint> trainingData, List<DataPoint> testData, IAlgorithm algorithm)
 		{
 			var mlContext = new MLContext();
 			var schema = SchemaDefinition.Create(typeof(DataPoint));
-			int featureCount = _trainingData.First().Features.Length;
+			int featureCount = trainingData.First().Features.Length;
 			schema[nameof(DataPoint.Features)].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureCount);
-			var trainingData = mlContext.Data.LoadFromEnumerable(_trainingData, schema);
-			var testData = mlContext.Data.LoadFromEnumerable(_testData, schema);
+			var trainingDataView = mlContext.Data.LoadFromEnumerable(trainingData, schema);
+			var testDataView = mlContext.Data.LoadFromEnumerable(testData, schema);
 			var estimator = algorithm.GetEstimator(mlContext);
-			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {_trainingData.Count} data points with {featureCount} features each");
+			Console.WriteLine($"Training model with algorithm \"{algorithm.Name}\" using {trainingData.Count} data points with {featureCount} features each");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			var model = estimator.Fit(trainingData);
+			var model = estimator.Fit(trainingDataView);
 			stopwatch.Stop();
-			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {_testData.Count} data points ({((decimal)_testData.Count / (_trainingData.Count + _testData.Count)):P2} of total)");
-			var predictions = model.Transform(testData);
-			SetScores(predictions);
+			Console.WriteLine($"Done training model in {stopwatch.Elapsed.TotalSeconds:F1} s, performing test with {testData.Count} data points ({((decimal)testData.Count / (trainingData.Count + testData.Count)):P2} of total)");
+			var trainingPredictions = model.Transform(trainingDataView);
+			var testPredictions = model.Transform(testDataView);
+			var predictions = new Predictions(trainingPredictions, testPredictions);
 			if (PrintEvaluation)
 			{
-				var metrics = mlContext.MulticlassClassification.Evaluate(predictions);
+				var metrics = mlContext.MulticlassClassification.Evaluate(testPredictions);
 				Console.WriteLine($"  MacroAccuracy: {metrics.MacroAccuracy:P2}");
 				Console.WriteLine($"  MicroAccuracy: {metrics.MicroAccuracy:P2}");
 				Console.WriteLine($"  LogLoss: {metrics.LogLoss:F3}");
 				Console.WriteLine($"  LogLossReduction: {metrics.LogLossReduction:F3}");
 				Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
 			}
+			return predictions;
 		}
 
-		private void SetScores(IDataView predictions)
+		private List<DataPoint> CreateMetaDataPoints(List<DataPoint> source, IDataView transformed)
 		{
-			var predictedLabels = predictions.GetColumn<UInt32>("PredictedLabel").Cast<PerformanceLabelType>().ToArray();
+			var scores = transformed.GetColumn<float[]>("Score").ToArray();
 			int i = 0;
-			foreach (var dataPoint in _testData)
+			var output = scores.Select(x =>
 			{
-				dataPoint.PredictedLabel = predictedLabels[i];
+				var sourceDataPoint = source[i];
+				var newDataPoint = new DataPoint
+				{
+					Features = scores[i],
+					Label = sourceDataPoint.Label,
+					Ticker = sourceDataPoint.Ticker,
+					Date = sourceDataPoint.Date
+				};
 				i++;
+				return newDataPoint;
+			}).ToList();
+			return output;
+		}
+
+		private void MergeMetaDataPoints(List<DataPoint> source, IDataView transformed, List<DataPoint> output)
+		{
+			var map = new Dictionary<DataPointKey, float[]>();
+			var scores = transformed.GetColumn<float[]>("Score").ToArray();
+			int i = 0;
+			foreach (var dataPoint in source)
+			{
+				var key = new DataPointKey(dataPoint);
+				map[key] = scores[i];
+				i++;
+			}
+			foreach (var dataPoint in output)
+			{
+				var key = new DataPointKey(dataPoint);
+				float[] features;
+				if (!map.TryGetValue(key, out features))
+				{
+					// Hack, duplicate the features
+					features = dataPoint.Features;
+				}
+				dataPoint.Features = dataPoint.Features.Concat(features).ToArray();
 			}
 		}
 	}
