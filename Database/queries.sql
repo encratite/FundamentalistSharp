@@ -6,8 +6,8 @@ with cik_form as
 )
 select
 	form,
-	count(*),
-	round(count(*)::numeric / (select count(*) from cik_form) * 100, 2) as percentage
+	count(*) count,
+	format(cast(count(*) as decimal) / (select count(*) from cik_form) * 100, 'N2') percentage
 from cik_form
 group by form
 order by count desc

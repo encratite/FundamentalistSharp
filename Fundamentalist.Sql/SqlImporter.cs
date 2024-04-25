@@ -1,7 +1,7 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json;
-using Npgsql;
-using NpgsqlTypes;
+using System.Data;
+using System.Data.SqlClient;
 using System.Diagnostics;
 
 namespace Fundamentalist.Sql
@@ -14,7 +14,7 @@ namespace Fundamentalist.Sql
 			xbrlParser.Load(xbrlDirectory, tickerPath, priceDataDirectory);
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			using (var connection = new NpgsqlConnection(connectionString))
+			using (var connection = new SqlConnection(connectionString))
 			{
 				connection.Open();
 				ImportCompanies(xbrlParser.Tickers, connection);
@@ -25,22 +25,32 @@ namespace Fundamentalist.Sql
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
-		private void ImportCompanies(IEnumerable<Ticker> tickers, NpgsqlConnection connection)
+		private void ImportCompanies(IEnumerable<Ticker> tickers, SqlConnection connection)
 		{
 			Console.WriteLine("Importing companies");
-			TruncateTable("company", connection);
-			using (var writer = connection.BeginBinaryImport("copy company (cik, symbol, name) from stdin binary"))
+			const string Table = "company";
+			TruncateTable(Table, connection);
+			var table = new DataTable(Table);
+			table.Columns.AddRange(new DataColumn[]
 			{
-				foreach (var ticker in tickers)
-					writer.WriteRow(ticker.Cik, ticker.Symbol, ticker.Title);
-				writer.Complete();
+				new DataColumn("cik", typeof(int)),
+				new DataColumn("symbol", typeof(string)),
+				new DataColumn("name", typeof(string))
+			});
+			foreach (var ticker in tickers)
+				table.Rows.Add(ticker.Cik, ticker.Symbol, ticker.Title);
+			using (var bulkCopy = GetBulkCopy(connection))
+			{
+				bulkCopy.DestinationTableName = Table;
+				bulkCopy.WriteToServer(table);
 			}
 		}
 
-		private void ImportEarnings(IEnumerable<CompanyEarnings> companyEarnings, NpgsqlConnection connection)
+		private void ImportEarnings(IEnumerable<CompanyEarnings> companyEarnings, SqlConnection connection)
 		{
 			Console.WriteLine("Importing earnings reports");
-			TruncateTable("fact", connection);
+			const string Table = "fact";
+			TruncateTable(Table, connection);
 			int i = 1;
 			int count = companyEarnings.Count();
 			foreach (var earnings in companyEarnings.OrderBy(x => x.Ticker.Symbol))
@@ -48,57 +58,87 @@ namespace Fundamentalist.Sql
 				var ticker = earnings.Ticker;
 				int cik = earnings.Ticker.Cik;
 				PrintProgress(i, count, ticker);
-				using (var writer = connection.BeginBinaryImport("copy fact (cik, name, end_date, value, fiscal_year, fiscal_period, form, filed, frame) from stdin binary"))
+				using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
 				{
+					var table = new DataTable(Table);
+					table.Columns.AddRange(new DataColumn[]
+					{
+						new DataColumn("cik", typeof(int)),
+						new DataColumn("name", typeof(string)),
+						new DataColumn("end_date", typeof(DateTime)),
+						new DataColumn("value", typeof(decimal)),
+						new DataColumn("fiscal_year", typeof(int)),
+						new DataColumn("fiscal_period", typeof(string)),
+						new DataColumn("form", typeof(string)),
+						new DataColumn("filed", typeof(DateTime)),
+						new DataColumn("frame", typeof(string)),
+					});
 					foreach (var fact in earnings.Facts.Values)
 					{
 						foreach (var pair in fact)
 						{
 							string factName = pair.Key;
 							var factValues = pair.Value;
-							writer.StartRow();
-							writer.Write(earnings.Ticker.Cik);
-							writer.Write(factName);
-							writer.Write(factValues.End, NpgsqlDbType.Date);
-							writer.Write(factValues.Value, NpgsqlDbType.Numeric);
-							writer.Write(factValues.FiscalYear);
-							writer.Write(factValues.FiscalPeriod, NpgsqlDbType.Char);
-							writer.Write(factValues.Form);
-							writer.Write(factValues.Filed, NpgsqlDbType.Date);
-							writer.Write(factValues.Frame);
+							table.Rows.Add(
+								earnings.Ticker.Cik,
+								factName,
+								factValues.End,
+								factValues.Value,
+								factValues.FiscalYear,
+								factValues.FiscalPeriod,
+								factValues.Form,
+								factValues.Filed,
+								factValues.Frame
+							);
 						}
 					}
-					writer.Complete();
+					bulkCopy.DestinationTableName = Table;
+					bulkCopy.WriteToServer(table);
 				}
 				i++;
 			}
 		}
 
-		private void ImportPriceData(IEnumerable<Ticker> tickers, string priceDataDirectory, NpgsqlConnection connection)
+		private void ImportPriceData(IEnumerable<Ticker> tickers, string priceDataDirectory, SqlConnection connection)
 		{
-			TruncateTable("price", connection);
+			Console.WriteLine("Importing price data");
+			const string Table = "price";
+			TruncateTable(Table, connection);
 			int i = 1;
 			int count = tickers.Count();
 			foreach (var ticker in tickers.OrderBy(x => x.Symbol))
 			{
 				PrintProgress(i, count, ticker);
 				var priceData = DataReader.GetPriceData(ticker.Symbol, priceDataDirectory);
-				using (var writer = connection.BeginBinaryImport("copy price (cik, date, open, high, low, close, volume) from stdin binary"))
+				var table = new DataTable(Table);
+				table.Columns.AddRange(new DataColumn[]
+				{
+						new DataColumn("cik", typeof(int)),
+						new DataColumn("date", typeof(DateTime)),
+						new DataColumn("open_price", typeof(decimal)),
+						new DataColumn("high", typeof(decimal)),
+						new DataColumn("low", typeof(decimal)),
+						new DataColumn("close_price", typeof(decimal)),
+						new DataColumn("volume", typeof(long)),
+				});
+				using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
 				{
 					foreach (var pair in priceData)
 					{
 						var date = pair.Key;
 						var price = pair.Value;
-						writer.StartRow();
-						writer.Write(ticker.Cik);
-						writer.Write(date, NpgsqlDbType.Date);
-						writer.Write(price.Open, NpgsqlDbType.Money);
-						writer.Write(price.High, NpgsqlDbType.Money);
-						writer.Write(price.Low, NpgsqlDbType.Money);
-						writer.Write(price.Close, NpgsqlDbType.Money);
-						writer.Write(price.Volume, NpgsqlDbType.Bigint);
+						table.Rows.Add(
+							ticker.Cik,
+							date,
+							price.Open,
+							price.High,
+							price.Low,
+							price.Close,
+							price.Volume
+						);
 					}
-					writer.Complete();
+					bulkCopy.DestinationTableName = Table;
+					bulkCopy.WriteToServer(table);
 				}
 				i++;
 			}
@@ -109,10 +149,16 @@ namespace Fundamentalist.Sql
 			Console.WriteLine($"Processing {ticker.Symbol} ({i}/{count})");
 		}
 
-		private void TruncateTable(string table, NpgsqlConnection connection)
+		private void TruncateTable(string table, SqlConnection connection)
 		{
-			using (var command = new NpgsqlCommand($"truncate table {table} cascade", connection))
+			using (var command = new SqlCommand($"delete from {table}", connection))
 				command.ExecuteNonQuery();
+		}
+
+		private SqlBulkCopy GetBulkCopy(SqlConnection connection)
+		{
+			var options = SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction;
+			return new SqlBulkCopy(connection, options, null);
 		}
 	}
 }
