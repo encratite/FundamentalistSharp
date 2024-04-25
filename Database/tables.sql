@@ -23,6 +23,8 @@ create table fact
 	frame text
 );
 
+create index fact_cik_filed_form_index on fact (cik, filed, form);
+
 create table price
 (
 	id serial primary key,
