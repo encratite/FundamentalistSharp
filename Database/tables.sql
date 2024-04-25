@@ -39,3 +39,5 @@ create table price
 	close_price money not null,
 	volume bigint not null
 )
+
+create index price_cik_date_index on price (cik, date)
