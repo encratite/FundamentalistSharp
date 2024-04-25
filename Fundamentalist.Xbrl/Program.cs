@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using Fundamentalist.Common;
+using System.Reflection;
 
 namespace Fundamentalist.Xblr
 {
@@ -6,7 +7,7 @@ namespace Fundamentalist.Xblr
 	{
 		private static void Main(string[] arguments)
 		{
-			if (arguments.Length != 5)
+			if (arguments.Length != 6)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
@@ -15,12 +16,15 @@ namespace Fundamentalist.Xblr
 				return;
 			}
 			string xbrlDirectory = arguments[0];
-			string tickerPath = arguments[1];
-			string frequencyPath = arguments[2];
-			string outputPath = arguments[3];
-			int featureCount = int.Parse(arguments[4]);
+			string priceDataDirectory = arguments[1];
+			string tickerPath = arguments[2];
+			string frequencyPath = arguments[3];
+			string csvOutputPath = arguments[4];
+			int featureCount = int.Parse(arguments[5]);
 			var parser = new XbrlParser();
-			parser.Run(xbrlDirectory, tickerPath, frequencyPath, outputPath, featureCount);
+			parser.Load(xbrlDirectory, priceDataDirectory, tickerPath, featureCount);
+			parser.WriteFrequency(frequencyPath);
+			parser.WriteCsv(csvOutputPath);
 		}
 	}
 }

@@ -1,7 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Fundamentalist.Xbrl
+namespace Fundamentalist.Common
 {
 	internal class NumericConverter : JsonConverter<int>
 	{

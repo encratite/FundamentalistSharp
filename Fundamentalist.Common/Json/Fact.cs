@@ -1,6 +1,6 @@
-﻿namespace Fundamentalist.Xblr.Json
+﻿namespace Fundamentalist.Common.Json
 {
-	internal class Fact
+	public class Fact
 	{
 		public string Label { get; set; }
 		public string Description { get; set; }

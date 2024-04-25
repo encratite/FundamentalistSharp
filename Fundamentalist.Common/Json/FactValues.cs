@@ -1,8 +1,8 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace Fundamentalist.Xblr.Json
+namespace Fundamentalist.Common.Json
 {
-	internal class FactValues
+	public class FactValues
 	{
 		public DateTime End { get; set; }
 		[JsonPropertyName("val")]

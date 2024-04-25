@@ -51,11 +51,13 @@ namespace Fundamentalist.Trainer
 			var metaAlgorithm = new LightLgbm(1000, null, 250, 100);
 			var commonFeaturesPredictions = TrainAndEvaluateModel(_commonFeaturesTrainingData, _commonFeaturesTestData, commonFeaturesAlgorithm);
 			var priceDataPredictions = TrainAndEvaluateModel(_priceDataTrainingData, _priceDataTestData, priceDataAlgorithm);
+			/*
 			var metaTrainingData = CreateMetaDataPoints(_commonFeaturesTrainingData, commonFeaturesPredictions.TrainingPredictions);
 			var metaTestData = CreateMetaDataPoints(_commonFeaturesTestData, commonFeaturesPredictions.TestPredictions);
 			MergeMetaDataPoints(_priceDataTrainingData, priceDataPredictions.TrainingPredictions, metaTrainingData);
 			MergeMetaDataPoints(_priceDataTestData, priceDataPredictions.TestPredictions, metaTestData);
 			TrainAndEvaluateModel(metaTrainingData, metaTestData, metaAlgorithm);
+			*/
 
 			FreeData();
 		}
@@ -200,6 +202,7 @@ namespace Fundamentalist.Trainer
 					// Metadata for backtesting, not used by training
 					Ticker = ticker,
 					Date = currentDate,
+					Performance = performance.Value
 				};
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
@@ -264,6 +267,7 @@ namespace Fundamentalist.Trainer
 					// Metadata for backtesting, not used by training
 					Ticker = ticker,
 					Date = currentDate,
+					Performance = performance.Value
 				};
 				lock (dataPoints)
 					dataPoints.Add(dataPoint);
@@ -349,7 +353,28 @@ namespace Fundamentalist.Trainer
 				Console.WriteLine($"  LogLossReduction: {metrics.LogLossReduction:F3}");
 				Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
 			}
+			EvaluatePredictions(testData, testPredictions);
 			return predictions;
+		}
+
+		private void EvaluatePredictions(List<DataPoint> testData, IDataView predictions)
+		{
+			var results = new Dictionary<PerformanceLabelType, List<decimal>>();
+			int i = 0;
+			var labels = predictions.GetColumn<UInt32>("PredictedLabel").Select(x => x - 1).Cast<PerformanceLabelType>().ToArray();
+			foreach (var dataPoint in testData)
+			{
+				var label = labels[i];
+				if (!results.ContainsKey(label))
+					results[label] = new List<decimal>();
+				results[label].Add(dataPoint.Performance);
+				i++;
+			}
+			foreach (var pair in results.OrderBy(x => x.Key))
+			{
+				decimal mean = pair.Value.Sum() / pair.Value.Count;
+				Console.WriteLine($"{(Enum.GetName(pair.Key) + ":").PadRight(15)} {mean:+0.000%;-0.000%;+0.000%}");
+			}
 		}
 
 		private List<DataPoint> CreateMetaDataPoints(List<DataPoint> source, IDataView transformed)
@@ -364,7 +389,8 @@ namespace Fundamentalist.Trainer
 					Features = scores[i],
 					Label = sourceDataPoint.Label,
 					Ticker = sourceDataPoint.Ticker,
-					Date = sourceDataPoint.Date
+					Date = sourceDataPoint.Date,
+					Performance = sourceDataPoint.Performance
 				};
 				i++;
 				return newDataPoint;

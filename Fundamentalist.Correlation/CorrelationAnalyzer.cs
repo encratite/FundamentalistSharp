@@ -29,7 +29,8 @@ namespace Fundamentalist.Correlation
 		private SortedList<DateTime, PriceData> _indexData;
 		private FeatureStats[] _stats;
 		private List<FeatureCountSample> _featureCounts = new List<FeatureCountSample>();
-		private Dictionary<DayOfWeek, List<float>> _weekdayPerformance = new Dictionary<DayOfWeek, List<float>>();
+		private ConcurrentDictionary<DayOfWeek, List<float>> _weekdayPerformance = new ConcurrentDictionary<DayOfWeek, List<float>>();
+		private ConcurrentDictionary<int, int> _yearEarnings = new ConcurrentDictionary<int, int>();
 
 		public CorrelationAnalyzer(
 			string earningsPath,
@@ -136,12 +137,32 @@ namespace Fundamentalist.Correlation
 			return values.Sum() / values.Count;
 		}
 
+		private decimal GetMean(List<decimal> values)
+		{
+			return values.Sum() / values.Count;
+		}
+
+		private decimal GetMean(List<long> values)
+		{
+			return (decimal)values.Sum() / values.Count;
+		}
+
 		private static decimal? GetLastPrice(DateTime now, SortedList<DateTime, PriceData> priceData)
 		{
 			var prices = priceData.Where(p => p.Key <= now).ToList();
 			decimal price = prices
 				.OrderByDescending(p => p.Key)
 				.Select(p => p.Value.Open)
+				.FirstOrDefault();
+			return price;
+		}
+
+		private static PriceData GetLastPriceData(DateTime now, SortedList<DateTime, PriceData> priceData)
+		{
+			var prices = priceData.Where(p => p.Key <= now).ToList();
+			PriceData price = prices
+				.OrderByDescending(p => p.Key)
+				.Select(p => p.Value)
 				.FirstOrDefault();
 			return price;
 		}
@@ -205,23 +226,25 @@ namespace Fundamentalist.Correlation
 
 		private void GatherStats()
 		{
-			Parallel.ForEach(_cache.Values, entry =>
+			Parallel.ForEach(_cache, x =>
 			{
+				var entry = x.Value;
 				float[] previousFeatures = null;
 				foreach (var pair in entry.Earnings)
 				{
 					var now = pair.Key;
+					_yearEarnings.AddOrUpdate(now.Year, 1, (key, x) => x + 1);
 					if (now < _fromDate || now >= _toDate)
 						continue;
 					var features = pair.Value;
-					decimal? lastPrice = GetLastPrice(now, entry.PriceData);
+					var lastPriceData = GetLastPriceData(now, entry.PriceData);
 					decimal? futurePrice = GetFuturePrice(now, _forecastDays, entry.PriceData);
 					decimal? lastIndexPrice = GetLastPrice(now, _indexData);
 					decimal? futureIndexPrice = GetFuturePrice(now, _forecastDays, _indexData);
-					if (lastPrice.HasValue && futurePrice.HasValue && futureIndexPrice.HasValue)
+					if (lastPriceData != null && futurePrice.HasValue && futureIndexPrice.HasValue)
 					{
-						float adjustedChange = GetAdjustedChange(lastPrice, futurePrice, lastIndexPrice, futureIndexPrice);
-						AnalyzeCurrentFeatures(features, adjustedChange);
+						float adjustedChange = GetAdjustedChange(lastPriceData.Open, futurePrice, lastIndexPrice, futureIndexPrice);
+						AnalyzeCurrentFeatures(features, adjustedChange, lastPriceData);
 						AddEarningsDayPerformance(now, adjustedChange);
 
 						if (previousFeatures != null)
@@ -232,7 +255,7 @@ namespace Fundamentalist.Correlation
 			});
 		}
 
-		private void AnalyzeCurrentFeatures(float[] features, float adjustedChange)
+		private void AnalyzeCurrentFeatures(float[] features, float adjustedChange, PriceData lastPriceData)
 		{
 			int count = 0;
 			for (int i = 0; i < _features; i++)
@@ -248,7 +271,7 @@ namespace Fundamentalist.Correlation
 					featureStats.NominalObservations.Add(observation);
 				}
 			}
-			var featureCount = new FeatureCountSample(count, adjustedChange);
+			var featureCount = new FeatureCountSample(count, adjustedChange, lastPriceData.Open, lastPriceData.Volume);
 			_featureCounts.Add(featureCount);
 		}
 
@@ -321,21 +344,29 @@ namespace Fundamentalist.Correlation
 		{
 			using (var writer = new StreamWriter(_featureCountOutput))
 			{
-				writer.WriteLine("Count,Performance");
-				var aggregation = new Dictionary<int, List<float>>();
+				writer.WriteLine("Count,Samples,Performance,Price,Volume");
+				var aggregation = new Dictionary<int, FeatureCountAggregation>();
 				foreach (var sample in _featureCounts)
 				{
-					const int GroupSize = 10;
+					const int GroupSize = 5;
 					int key = (sample.Count / GroupSize) * GroupSize;
-					if (!aggregation.ContainsKey(key))
-						aggregation[key] = new List<float>();
-					aggregation[key].Add(sample.Performance);
+					FeatureCountAggregation featureCountAggregation;
+					if (!aggregation.TryGetValue(key, out featureCountAggregation))
+					{
+						featureCountAggregation = new FeatureCountAggregation();
+						aggregation[key] = featureCountAggregation;
+					}
+					featureCountAggregation.Performance.Add(sample.Performance);
+					featureCountAggregation.Prices.Add(sample.Price);
+					featureCountAggregation.Volumes.Add(sample.Volume);
 				}
 
 				foreach (var pair in aggregation.OrderBy(x => x.Key))
 				{
-					float mean = GetMean(pair.Value);
-					writer.WriteLine($"{pair.Key},{mean}");
+					float meanPerformance = GetMean(pair.Value.Performance);
+					decimal meanPrice = GetMean(pair.Value.Prices);
+					decimal meanVolume = GetMean(pair.Value.Volumes);
+					writer.WriteLine($"{pair.Key},{pair.Value.Performance.Count},{meanPerformance:F3},{meanPrice:F2},{(long)meanVolume}");
 				}
 			}
 		}

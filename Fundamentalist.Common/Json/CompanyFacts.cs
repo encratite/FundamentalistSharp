@@ -1,9 +1,9 @@
-﻿using Fundamentalist.Xbrl;
+﻿using Fundamentalist.Common;
 using System.Text.Json.Serialization;
 
-namespace Fundamentalist.Xblr.Json
+namespace Fundamentalist.Common.Json
 {
-	internal class CompanyFacts
+	public class CompanyFacts
 	{
 		[JsonConverter(typeof(NumericConverter))]
 		public int Cik { get; set; }

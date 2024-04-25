@@ -43,12 +43,11 @@ namespace Fundamentalist.Trainer
 				var options = new TrainerOptions
 				{
 					DaysSinceEarnings = 6,
-					ForecastDays = 7,
-					// TrainingDate = new DateTime(2018, 1, 1),
-					TrainingDate = new DateTime(2022, 1, 1),
+					ForecastDays = 60,
+					TrainingDate = new DateTime(2018, 1, 1),
 					TestDate = new DateTime(2023, 1, 1),
-					OutperformLimit = 0.02m,
-					UnderperformLimit = -0.02m,
+					OutperformLimit = 0.06m,
+					UnderperformLimit = -0.06m,
 					CommonFeatures = features,
 					NominalCorrelationPath = nominalCorrelationPath,
 					NominalCorrelationLimit = 0.03m,

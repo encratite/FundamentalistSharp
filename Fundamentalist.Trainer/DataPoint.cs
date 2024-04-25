@@ -1,5 +1,4 @@
-﻿using Fundamentalist.Common;
-using Microsoft.ML.Data;
+﻿using Microsoft.ML.Data;
 
 namespace Fundamentalist.Trainer
 {
@@ -23,5 +22,7 @@ namespace Fundamentalist.Trainer
 		[NoColumn]
 		public DateTime Date { get; set; }
 
+		[NoColumn]
+		public decimal Performance { get; set; }
 	}
 }

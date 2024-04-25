@@ -1,35 +1,47 @@
-﻿using Fundamentalist.Xblr.Json;
-using Fundamentalist.Xbrl.Json;
+﻿using Fundamentalist.Common.Json;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace Fundamentalist.Xblr
+namespace Fundamentalist.Common
 {
-	internal class XbrlParser
+	public class XbrlParser
 	{
-		private const int MinimumFacts = 20;
+		public IEnumerable<Ticker> Tickers
+		{
+			get => _tickers.Values;
+		}
+
+		public IEnumerable<CompanyEarnings> Earnings
+		{
+			get => _companyEarnings;
+		}
 
 		private Dictionary<string, int> _factFrequenies;
 		private ConcurrentBag<CompanyEarnings> _companyEarnings;
 		private int _progress;
 		private int _total;
 		private Stopwatch _stopwatch;
-		private Dictionary<int, string> _tickers;
+		private Dictionary<int, Ticker> _tickers;
 		private int _tickerErrors;
-		private int _featureCount;
+		private int? _maximumFeatureCount;
+		private ConcurrentDictionary<string, int> _formFrequency;
+		private HashSet<string> _priceDataTickers;
 
-		public void Run(string xbrlDirectory, string tickerPath, string frequencyPath, string outputPath, int featureCount)
+		public void Load(string xbrlDirectory, string tickerPath, string priceDataDirectory, int? maximumFeatureCount = null)
 		{
-			_featureCount = featureCount;
+			_maximumFeatureCount = maximumFeatureCount;
 			_stopwatch = new Stopwatch();
 			_stopwatch.Start();
 			Console.WriteLine($"Reading tickers from {tickerPath}");
 			ReadTickers(tickerPath);
+			Console.WriteLine($"Filtering tickers using available price data in {priceDataDirectory}");
+			LoadPriceData(priceDataDirectory);
 			Console.WriteLine($"Processing XBRL files from {xbrlDirectory}");
 			var paths = Directory.GetFiles(xbrlDirectory, "*.json");
 			_factFrequenies = new Dictionary<string, int>();
 			_companyEarnings = new ConcurrentBag<CompanyEarnings>();
+			_formFrequency = new ConcurrentDictionary<string, int>();
 			_progress = 0;
 			_total = paths.Length;
 			_tickerErrors = 0;
@@ -43,21 +55,26 @@ namespace Fundamentalist.Xblr
 			}
 			foreach (var thread in threads)
 				thread.Join();
-			var frequencies = _factFrequenies.AsEnumerable().OrderByDescending(x => x.Value);
-			using (var writer = new StreamWriter(frequencyPath, false))
-			{
-				foreach (var x in frequencies)
-					writer.WriteLine($"{x.Key}: {x.Value}");
-			}
+			AnalyzeFormFrequency();
+			_stopwatch.Stop();
+			Console.WriteLine($"Processed all files in {_stopwatch.Elapsed.TotalSeconds:F1} s and encountered {_factFrequenies.Count} facts in total");
+			Console.WriteLine($"Discarded {_tickerErrors} companies due to missing ticker data");
+		}
+
+		public void WriteCsv(string outputPath)
+		{
 			var featureIndices = new Dictionary<string, int>();
 			int index = 0;
-			var selectedFacts = frequencies.Take(_featureCount).Select(x => x.Key).ToList();
+			IEnumerable<KeyValuePair<string, int>> frequencies = _factFrequenies.AsEnumerable().OrderByDescending(x => x.Value);
+			if (_maximumFeatureCount.HasValue)
+				frequencies = frequencies.Take(_maximumFeatureCount.Value);
+			var selectedFacts = frequencies.Select(x => x.Key).ToList();
 			foreach (string name in selectedFacts)
 			{
 				featureIndices[name] = index;
 				index++;
 			}
-			Console.WriteLine($"Writing output to {outputPath}");
+			Console.WriteLine($"Writing CSV output to {outputPath}");
 			using (var writer = new StreamWriter(outputPath, false))
 			{
 				var writeTokens = (List<string> tokens) =>
@@ -80,10 +97,10 @@ namespace Fundamentalist.Xblr
 						var facts = x.Value;
 						var tokens = new List<string>
 						{
-							earnings.Ticker,
+							earnings.Ticker.Symbol,
 							date.ToShortDateString(),
 						};
-						var features = new decimal[_featureCount];
+						var features = new decimal[selectedFacts.Count];
 						foreach (var fact in facts)
 						{
 							string name = fact.Key;
@@ -99,19 +116,25 @@ namespace Fundamentalist.Xblr
 					}
 				}
 			}
-			_stopwatch.Stop();
-			Console.WriteLine($"Processed all files in {_stopwatch.Elapsed.TotalSeconds:F1} s and encountered {_factFrequenies.Count} facts in total");
-			Console.WriteLine($"Discarded {_tickerErrors} companies due to missing ticker data");
-			_companyEarnings = null;
+		}
+
+		public void WriteFrequency(string frequencyPath)
+		{
+			var frequencies = _factFrequenies.AsEnumerable().OrderByDescending(x => x.Value);
+			using (var writer = new StreamWriter(frequencyPath, false))
+			{
+				foreach (var x in frequencies)
+					writer.WriteLine($"{x.Key}: {x.Value}");
+			}
 		}
 
 		private void ReadTickers(string tickerPath)
 		{
-			_tickers = new Dictionary<int, string>();
+			_tickers = new Dictionary<int, Ticker>();
 			string json = File.ReadAllText(tickerPath);
-			var ticker = JsonSerializer.Deserialize<Dictionary<string, Ticker>>(json);
-			foreach (var x in ticker.Values)
-				_tickers[x.Cik] = x.Symbol;
+			var tickers = JsonSerializer.Deserialize<Dictionary<string, Ticker>>(json);
+			foreach (var x in tickers.Values)
+				_tickers[x.Cik] = x;
 		}
 
 		private void RunThread(ConcurrentQueue<string> queue)
@@ -147,7 +170,7 @@ namespace Fundamentalist.Xblr
 			var companyFacts = JsonSerializer.Deserialize<CompanyFacts>(json, options);
 			if (companyFacts.Facts == null)
 				return;
-			string ticker;
+			Ticker ticker;
 			if (!_tickers.TryGetValue(companyFacts.Cik, out ticker))
 			{
 				// Console.WriteLine($"Unable to determine ticker of CIK {companyFacts.Cik}");
@@ -169,8 +192,7 @@ namespace Fundamentalist.Xblr
 						factFrequencies[factName] = count;
 					foreach (var factValue in factValues)
 					{
-						if (factValue.Form != "10-Q")
-							continue;
+						_formFrequency.AddOrUpdate(factValue.Form, 1, (x, y) => y + 1);
 						var facts = earnings.Facts;
 						var key = factValue.Filed;
 						if (!facts.ContainsKey(key))
@@ -179,8 +201,30 @@ namespace Fundamentalist.Xblr
 					}
 				}
 			}
-			if (earnings.Facts.Count >= MinimumFacts)
+			if (earnings.Facts.Count > 0)
 				_companyEarnings.Add(earnings);
+		}
+
+		private void AnalyzeFormFrequency()
+		{
+			Console.WriteLine("Form statistics:");
+			int sum = _formFrequency.Values.Sum();
+			foreach (var pair in _formFrequency.OrderBy(x => x.Key))
+				Console.WriteLine($"{pair.Key}: {(decimal)pair.Value / sum:P2}");
+		}
+
+		private void LoadPriceData(string priceDataDirectory)
+		{
+			var files = Directory.GetFiles(priceDataDirectory);
+			_priceDataTickers = new HashSet<string>(files.Select(Path.GetFileNameWithoutExtension));
+			var removeTickers = new List<int>();
+			foreach (var pair in _tickers)
+			{
+				if (!_priceDataTickers.Contains(pair.Value.Symbol))
+					removeTickers.Add(pair.Key);
+			}
+			foreach (int cik in removeTickers)
+				_tickers.Remove(cik);
 		}
 	}
 }
