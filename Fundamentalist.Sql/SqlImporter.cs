@@ -8,6 +8,10 @@ namespace Fundamentalist.Sql
 {
 	internal class SqlImporter
 	{
+		const string CompanyTable = "company";
+		const string FactTable = "fact";
+		const string PriceTable = "price";
+
 		public void Import(string xbrlDirectory, string tickerPath, string priceDataDirectory, string connectionString)
 		{
 			var xbrlParser = new XbrlParser();
@@ -20,6 +24,7 @@ namespace Fundamentalist.Sql
 				ImportCompanies(xbrlParser.Tickers, connection);
 				ImportEarnings(xbrlParser.Earnings, connection);
 				ImportPriceData(xbrlParser.Tickers, priceDataDirectory, connection);
+				ImportIndexPriceData(priceDataDirectory, connection);
 			}
 			stopwatch.Stop();
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -28,9 +33,8 @@ namespace Fundamentalist.Sql
 		private void ImportCompanies(IEnumerable<Ticker> tickers, SqlConnection connection)
 		{
 			Console.WriteLine("Importing companies");
-			const string Table = "company";
-			TruncateTable(Table, connection);
-			var table = new DataTable(Table);
+			TruncateTable(CompanyTable, connection);
+			var table = new DataTable(CompanyTable);
 			table.Columns.AddRange(new DataColumn[]
 			{
 				new DataColumn("cik", typeof(int)),
@@ -41,7 +45,7 @@ namespace Fundamentalist.Sql
 				table.Rows.Add(ticker.Cik, ticker.Symbol, ticker.Title);
 			using (var bulkCopy = GetBulkCopy(connection))
 			{
-				bulkCopy.DestinationTableName = Table;
+				bulkCopy.DestinationTableName = CompanyTable;
 				bulkCopy.WriteToServer(table);
 			}
 		}
@@ -49,8 +53,7 @@ namespace Fundamentalist.Sql
 		private void ImportEarnings(IEnumerable<CompanyEarnings> companyEarnings, SqlConnection connection)
 		{
 			Console.WriteLine("Importing earnings reports");
-			const string Table = "fact";
-			TruncateTable(Table, connection);
+			TruncateTable(FactTable, connection);
 			int i = 1;
 			int count = companyEarnings.Count();
 			foreach (var earnings in companyEarnings.OrderBy(x => x.Ticker.Symbol))
@@ -60,7 +63,7 @@ namespace Fundamentalist.Sql
 				PrintProgress(i, count, ticker);
 				using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
 				{
-					var table = new DataTable(Table);
+					var table = new DataTable(FactTable);
 					table.Columns.AddRange(new DataColumn[]
 					{
 						new DataColumn("cik", typeof(int)),
@@ -92,7 +95,7 @@ namespace Fundamentalist.Sql
 							);
 						}
 					}
-					bulkCopy.DestinationTableName = Table;
+					bulkCopy.DestinationTableName = FactTable;
 					bulkCopy.WriteToServer(table);
 				}
 				i++;
@@ -102,45 +105,56 @@ namespace Fundamentalist.Sql
 		private void ImportPriceData(IEnumerable<Ticker> tickers, string priceDataDirectory, SqlConnection connection)
 		{
 			Console.WriteLine("Importing price data");
-			const string Table = "price";
-			TruncateTable(Table, connection);
+			TruncateTable(PriceTable, connection);
 			int i = 1;
 			int count = tickers.Count();
 			foreach (var ticker in tickers.OrderBy(x => x.Symbol))
 			{
 				PrintProgress(i, count, ticker);
 				var priceData = DataReader.GetPriceData(ticker.Symbol, priceDataDirectory);
-				var table = new DataTable(Table);
-				table.Columns.AddRange(new DataColumn[]
-				{
-						new DataColumn("cik", typeof(int)),
-						new DataColumn("date", typeof(DateTime)),
-						new DataColumn("open_price", typeof(decimal)),
-						new DataColumn("high", typeof(decimal)),
-						new DataColumn("low", typeof(decimal)),
-						new DataColumn("close_price", typeof(decimal)),
-						new DataColumn("volume", typeof(long)),
-				});
-				using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
-				{
-					foreach (var pair in priceData)
-					{
-						var date = pair.Key;
-						var price = pair.Value;
-						table.Rows.Add(
-							ticker.Cik,
-							date,
-							price.Open,
-							price.High,
-							price.Low,
-							price.Close,
-							price.Volume
-						);
-					}
-					bulkCopy.DestinationTableName = Table;
-					bulkCopy.WriteToServer(table);
-				}
+				ImportTickerPriceData(ticker.Cik, priceData, connection);
 				i++;
+			}
+		}
+
+		private void ImportIndexPriceData(string priceDataDirectory, SqlConnection connection)
+		{
+			Console.WriteLine("Importing index price data");
+			var priceData = DataReader.GetPriceData(DataReader.IndexTicker, priceDataDirectory);
+			ImportTickerPriceData(null, priceData, connection);
+		}
+
+		private void ImportTickerPriceData(int? cik, SortedList<DateTime, PriceData> priceData, SqlConnection connection)
+		{
+			var table = new DataTable(PriceTable);
+			table.Columns.AddRange(new DataColumn[]
+			{
+					new DataColumn("cik", typeof(int)),
+					new DataColumn("date", typeof(DateTime)),
+					new DataColumn("open_price", typeof(decimal)),
+					new DataColumn("high", typeof(decimal)),
+					new DataColumn("low", typeof(decimal)),
+					new DataColumn("close_price", typeof(decimal)),
+					new DataColumn("volume", typeof(long)),
+			});
+			using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
+			{
+				foreach (var pair in priceData)
+				{
+					var date = pair.Key;
+					var price = pair.Value;
+					table.Rows.Add(
+						cik,
+						date,
+						price.Open,
+						price.High,
+						price.Low,
+						price.Close,
+						price.Volume
+					);
+				}
+				bulkCopy.DestinationTableName = PriceTable;
+				bulkCopy.WriteToServer(table);
 			}
 		}
 
