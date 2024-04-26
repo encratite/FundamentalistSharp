@@ -31,7 +31,7 @@ create clustered index fact_cik_filed_form_index on fact (cik, filed, form)
 
 create table price
 (
-	cik int references company (cik) on delete cascade not null,
+	cik int references company (cik) on delete cascade,
 	date date not null,
 	open_price money not null,
 	high money not null,
