@@ -2,10 +2,22 @@ if object_id('get_form_frequency') is not null
 	drop procedure get_form_frequency
 if object_id('get_facts_performance_distribution') is not null
 	drop procedure get_facts_performance_distribution
-if object_id('get_price') is not null
-	drop function get_price
+if object_id('get_price_performance_distribution') is not null
+	drop procedure get_price_performance_distribution
+if object_id('get_price_performance_distribution_by_period') is not null
+	drop procedure get_price_performance_distribution_by_period
+go
+
+if object_id('get_ohlc') is not null
+	drop function get_ohlc
+if object_id('get_close_price') is not null
+	drop function get_close_price
 if object_id('get_price_performance_rows') is not null
 	drop function get_price_performance_rows
+if object_id('get_price_performance_rows') is not null
+	drop function get_price_performance_rows
+go
+
 if type_id('performance_table_type') is not null
 	drop type performance_table_type
 go
@@ -13,11 +25,33 @@ go
 create type performance_table_type as table
 (
 	price money,
-	performance decimal
+	performance decimal,
+	volume money
 )
 go
 
-create function get_price(@cik int, @date date)
+create function get_ohlc(@cik int, @date date)
+returns table as
+return
+(
+	select top 1
+		nullif(open_price, 0) as open_price,
+		nullif(high, 0) as high,
+		nullif(low, 0) as low,
+		nullif(close_price, 0) as close_price,
+		nullif(volume, 0) as volume
+	from price
+	where
+	(
+		(@cik is null and cik is null)
+		or cik = @cik
+	)
+	and date >= @date
+	order by date
+)
+go
+
+create function get_close_price(@cik int, @date date)
 returns money as
 begin
 	return
@@ -26,11 +60,11 @@ begin
 			nullif(close_price, 0)
 		from price
 		where
-			(
-				(@cik is null and cik is null)
-				or cik = @cik
-			)
-			and date >= @date
+		(
+			(@cik is null and cik is null)
+			or cik = @cik
+		)
+		and date >= @date
 		order by date
 	)
 end
@@ -42,12 +76,14 @@ return
 	select
 		group_key as price,
 		avg(performance) as performance,
+		avg(volume) as volume,
 		count(*) as count
 	from
 	(
 		select
 			iif(@group_size is not null, floor(price / @group_size) * @group_size, @from) as group_key,
-			performance
+			performance,
+			volume
 		from @performance
 		where
 			performance is not null
@@ -82,8 +118,8 @@ begin
 	(
 		select top 100 percent
 			(
-				dbo.get_price(cik, dateadd(d, @forecast_days, filed)) / dbo.get_price(cik, filed)
-				- dbo.get_price(null, dateadd(d, @forecast_days, filed)) / dbo.get_price(null, filed)
+				dbo.get_close_price(cik, dateadd(d, @forecast_days, filed)) / dbo.get_close_price(cik, filed)
+				- dbo.get_close_price(null, dateadd(d, @forecast_days, filed)) / dbo.get_close_price(null, filed)
 			) as performance,
 			(count(*) / @group_size) * @group_size as group_key
 		from fact
@@ -103,19 +139,30 @@ begin
 end
 go
 
-create procedure get_price_performance_distribution(@from date, @to date) as
+create procedure get_price_performance_distribution(@from date, @to date, @format bit) as
 begin
 	declare @performance performance_table_type
 
 	insert into @performance
 	select
-		dbo.get_price(cik, @from) price,
+		ohlc_from.close_price price,
 		(
-			dbo.get_price(cik, @to) / dbo.get_price(cik, @from)
-			- dbo.get_price(null, @to) / dbo.get_price(null, @from)
-		) as performance
+			dbo.get_close_price(cik, @to) / ohlc_from.close_price
+			- dbo.get_close_price(null, @to) / dbo.get_close_price(null, @from)
+		) as performance,
+		ohlc_from.close_price * ohlc_from.volume as volume
 	from company
+	cross apply get_ohlc(cik, @from) as ohlc_from
 
+	declare @output table
+	(
+		price money,
+		performance money,
+		volume money,
+		count bigint
+	)
+
+	insert into @output
 	select * from
 	(
 		select * from get_price_performance_rows(0, 1, 0.2, @performance)
@@ -135,5 +182,49 @@ begin
 		select * from get_price_performance_rows(1000, null, null, @performance)
 	) P
 	order by price
+
+	if @format = 1
+	begin
+		select
+			price,
+			format(performance, 'N2') as performance,
+			format(volume, 'N0') as volume,
+			count
+		from @output
+	end
+	else
+	begin
+		select * from @output
+	end
+end
+go
+
+create procedure get_price_performance_distribution_by_period(@from date, @to date, @months int) as
+begin
+	declare @output table
+	(
+		price money,
+		performance money,
+		volume money,
+		count bigint
+	)
+
+	declare @now date = @from
+	while @now < @to
+	begin
+		print @now
+		declare @next date = dateadd(month, @months, @now)
+		insert into @output
+		exec get_price_performance_distribution @now, @next, 0
+		set @now = @next
+	end
+
+	select
+		price,
+		format(avg(performance), 'N2') as performance,
+		format(avg(volume), 'N0') as volume,
+		cast(avg(count) as bigint) count
+	from @output
+	group by price
 end
 go
