@@ -226,5 +226,31 @@ begin
 		cast(avg(count) as bigint) count
 	from @output
 	group by price
+	order by price
+end
+go
+
+create procedure get_failed_stock_stats as
+begin
+	declare @all int = (select count(*) from (select distinct cik from price) C)
+
+	declare @failed int =
+	(
+		select count(*)
+		from
+		(
+			select
+				cik,
+				max(date) as date
+			from price
+			group by cik
+			having max(date) < dateadd(month, -1, (select top 1 max(date) from price))
+		) C
+	)
+
+	select
+		@all as all_stocks,
+		@failed as failed_stocks,
+		format(@failed / cast(@all as decimal), 'N3') as failure_rate
 end
 go

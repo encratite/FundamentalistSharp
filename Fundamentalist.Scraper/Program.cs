@@ -11,13 +11,13 @@ namespace Fundamentalist.Scraper
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
-				Console.WriteLine($"{name.Name} <path to earnings .csv file> <price data directory to download files to>");
+				Console.WriteLine($"{name.Name} <path to company_tickers.json> <price data directory to download files to>");
 				return;
 			}
-			string earningsPath = arguments[0];
+			string tickersPath = arguments[0];
 			string priceDataDirectory = arguments[1];
 			var scraper = new Scraper();
-			scraper.Run(earningsPath, priceDataDirectory);
+			scraper.Run(tickersPath, priceDataDirectory);
 		}
 	}
 }

@@ -1,4 +1,5 @@
 ﻿using Fundamentalist.Common;
+using System.Net;
 using System.Web;
 
 namespace Fundamentalist.Scraper
@@ -7,56 +8,64 @@ namespace Fundamentalist.Scraper
 	{
 		private HttpClient _httpClient = new HttpClient();
 
-		public void Run(string csvPath, string directory)
+		public void Run(string tickersPath, string directory)
 		{
 			DownloadPriceData(DataReader.IndexTicker, directory);
-			var tickers = DataReader.GetTickers(csvPath);
-			foreach (string ticker in tickers)
-				DownloadPriceData(ticker, directory);
+			var tickers = DataReader.GetTickersFromJson(tickersPath);
+			foreach (var ticker in tickers)
+				DownloadPriceData(ticker.Symbol, directory);
 		}
 
-		private string DownloadFile(string uri, string path, bool downloadOnly = false, int? sleepMilliseconds = null)
+		private void DownloadFile(string uri, string path, int? sleepMilliseconds = null, int? expirationDays = null)
 		{
-			string content = null;
+			bool updateFile = false;
 			if (File.Exists(path))
 			{
-				if (downloadOnly)
-					Console.WriteLine($"\"{path}\" had already been downloaded");
+				if (expirationDays.HasValue)
+				{
+					var creationTime = File.GetCreationTime(path);
+					var age = DateTime.Now - creationTime;
+					if (age > TimeSpan.FromDays(expirationDays.Value))
+						updateFile = true;
+					else
+					{
+						Console.WriteLine($"\"{path}\" is still up to date");
+						return;
+					}
+				}
 				else
 				{
-					content = File.ReadAllText(path);
-					Console.WriteLine($"Retrieved \"{path}\" from disk");
+					Console.WriteLine($"\"{path}\" had already been downloaded");
+					return;
 				}
 			}
-			else
+			try
 			{
-				try
-				{
-					content = _httpClient.GetStringAsync(uri).Result;
-					string? directoryPath = Path.GetDirectoryName(path);
-					if (directoryPath != null)
-						Directory.CreateDirectory(directoryPath);
-					File.WriteAllText(path, content);
+				string content = _httpClient.GetStringAsync(uri).Result;
+				string? directoryPath = Path.GetDirectoryName(path);
+				if (directoryPath != null)
+					Directory.CreateDirectory(directoryPath);
+				File.WriteAllText(path, content);
+				if (updateFile)
+					Console.WriteLine($"Updated \"{path}\"");
+				else
 					Console.WriteLine($"Downloaded \"{path}\"");
-				}
-				catch (AggregateException exception)
-				{
-					string message = $"Failed to download \"{path}\"";
-					var httpException = exception.InnerException as HttpRequestException;
-					if (httpException != null)
-						Utility.WriteError($"{message} ({httpException.StatusCode})");
-					else
-						Utility.WriteError($"{message} ({exception.InnerException})");
-				}
-				if (sleepMilliseconds.HasValue)
-					Thread.Sleep(sleepMilliseconds.Value);
 			}
-			return content;
-		}
-
-		private void DownloadOnly(string uri, string path, int? sleepMilliseconds = null)
-		{
-			DownloadFile(uri, path, true, sleepMilliseconds);
+			catch (AggregateException exception)
+			{
+				string message = $"Failed to download \"{path}\"";
+				var httpException = exception.InnerException as HttpRequestException;
+				if (httpException != null)
+				{
+					Utility.WriteError($"{message} ({httpException.StatusCode})");
+					if (httpException.StatusCode == HttpStatusCode.NotFound)
+						File.Create(path);
+				}
+				else
+					Utility.WriteError($"{message} ({exception.InnerException})");
+			}
+			if (sleepMilliseconds.HasValue)
+				Thread.Sleep(sleepMilliseconds.Value);
 		}
 
 		private void DownloadPriceData(string ticker, string directory)
@@ -64,7 +73,7 @@ namespace Fundamentalist.Scraper
 			string encodedTicker = HttpUtility.UrlEncode(ticker);
 			string uri = $"https://query1.finance.yahoo.com/v7/finance/download/{encodedTicker}?period1=0&period2=2000000000&interval=1d&events=history";
 			string path = Path.Combine(directory, $"{ticker}.csv");
-			DownloadOnly(uri, path, 2000);
+			DownloadFile(uri, path, 1000, 7);
 		}
 	}
 }

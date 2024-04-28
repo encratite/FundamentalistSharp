@@ -4,20 +4,23 @@ if object_id('price') is not null
 if object_id('fact') is not null
 	drop table fact
 
-if object_id('company') is not null
-	drop table company
+if object_id('ticker') is not null
+	drop table ticker
 
-create table company
+create table ticker
 (
-	cik int primary key,
-	symbol varchar(7) not null,
-	name varchar(80) not null
+	symbol varchar(10) primary key,
+	cik int not null,
+	company varchar(80) not null,
+	exclude bit not null
 )
+
+create index ticker_symbol_exclude_index on ticker (symbol, exclude)
 
 create table fact
 (
-	cik int references company (cik) on delete cascade not null,
-	name varchar(200) not null,
+	cik int not null,
+	name varchar(300) not null,
 	end_date date not null,
 	value decimal(28) not null,
 	fiscal_year int,
@@ -31,13 +34,14 @@ create clustered index fact_cik_filed_form_index on fact (cik, filed, form)
 
 create table price
 (
-	cik int references company (cik) on delete cascade,
+	symbol varchar(10) references ticker (symbol) on delete cascade,
 	date date not null,
 	open_price money not null,
 	high money not null,
 	low money not null,
 	close_price money not null,
+	adjusted_close money not null,
 	volume bigint not null
 )
 
-create index price_cik_date_index on price (cik, date)
+create clustered index price_symbol_date_index on price (symbol, date)

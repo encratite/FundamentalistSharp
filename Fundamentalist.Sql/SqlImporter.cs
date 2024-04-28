@@ -3,12 +3,13 @@ using Fundamentalist.Common.Json;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Fundamentalist.Sql
 {
 	internal class SqlImporter
 	{
-		const string CompanyTable = "company";
+		const string TickerTable = "ticker";
 		const string FactTable = "fact";
 		const string PriceTable = "price";
 
@@ -21,8 +22,8 @@ namespace Fundamentalist.Sql
 			using (var connection = new SqlConnection(connectionString))
 			{
 				connection.Open();
-				ImportCompanies(xbrlParser.Tickers, connection);
-				ImportEarnings(xbrlParser.Earnings, connection);
+				// ImportTickers(xbrlParser.Tickers, connection);
+				// ImportEarnings(xbrlParser.Earnings, connection);
 				ImportPriceData(xbrlParser.Tickers, priceDataDirectory, connection);
 				ImportIndexPriceData(priceDataDirectory, connection);
 			}
@@ -30,22 +31,32 @@ namespace Fundamentalist.Sql
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
-		private void ImportCompanies(IEnumerable<Ticker> tickers, SqlConnection connection)
+		private void ImportTickers(IEnumerable<Ticker> tickers, SqlConnection connection)
 		{
-			Console.WriteLine("Importing companies");
-			TruncateTable(CompanyTable, connection);
-			var table = new DataTable(CompanyTable);
+			Console.WriteLine("Importing tickers");
+			TruncateTable(TickerTable, connection);
+			var table = new DataTable(TickerTable);
 			table.Columns.AddRange(new DataColumn[]
 			{
-				new DataColumn("cik", typeof(int)),
 				new DataColumn("symbol", typeof(string)),
-				new DataColumn("name", typeof(string))
+				new DataColumn("cik", typeof(int)),
+				new DataColumn("company", typeof(string)),
+				new DataColumn("exclude", typeof(bool))
 			});
+			var usedCiks = new HashSet<int>();
+			var permittedSuffixes = new Regex("-(A|B|C|PA|PB|PC)$");
+			var bannedTitlePattern = new Regex(" ETF| Fund|S&P 500");
 			foreach (var ticker in tickers)
-				table.Rows.Add(ticker.Cik, ticker.Symbol, ticker.Title);
+			{
+				bool usedCik = usedCiks.Contains(ticker.Cik);
+				bool exclude = usedCik || (ticker.Symbol.Contains("-") && !permittedSuffixes.IsMatch(ticker.Symbol)) || bannedTitlePattern.IsMatch(ticker.Title);
+				table.Rows.Add(ticker.Symbol, ticker.Cik, ticker.Title, exclude);
+				if (!usedCik)
+					usedCiks.Add(ticker.Cik);
+			}
 			using (var bulkCopy = GetBulkCopy(connection))
 			{
-				bulkCopy.DestinationTableName = CompanyTable;
+				bulkCopy.DestinationTableName = TickerTable;
 				bulkCopy.WriteToServer(table);
 			}
 		}
@@ -112,7 +123,8 @@ namespace Fundamentalist.Sql
 			{
 				PrintProgress(i, count, ticker);
 				var priceData = DataReader.GetPriceData(ticker.Symbol, priceDataDirectory);
-				ImportTickerPriceData(ticker.Cik, priceData, connection);
+				if (priceData != null)
+					ImportTickerPriceData(ticker.Symbol, priceData, connection);
 				i++;
 			}
 		}
@@ -124,37 +136,46 @@ namespace Fundamentalist.Sql
 			ImportTickerPriceData(null, priceData, connection);
 		}
 
-		private void ImportTickerPriceData(int? cik, SortedList<DateTime, PriceData> priceData, SqlConnection connection)
+		private void ImportTickerPriceData(string symbol, SortedList<DateTime, PriceData> priceData, SqlConnection connection)
 		{
 			var table = new DataTable(PriceTable);
 			table.Columns.AddRange(new DataColumn[]
 			{
-					new DataColumn("cik", typeof(int)),
+					new DataColumn("symbol", typeof(string)),
 					new DataColumn("date", typeof(DateTime)),
 					new DataColumn("open_price", typeof(decimal)),
 					new DataColumn("high", typeof(decimal)),
 					new DataColumn("low", typeof(decimal)),
 					new DataColumn("close_price", typeof(decimal)),
+					new DataColumn("adjusted_close", typeof(decimal)),
 					new DataColumn("volume", typeof(long)),
 			});
-			using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
+			try
 			{
-				foreach (var pair in priceData)
+				using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
 				{
-					var date = pair.Key;
-					var price = pair.Value;
-					table.Rows.Add(
-						cik,
-						date,
-						price.Open,
-						price.High,
-						price.Low,
-						price.Close,
-						price.Volume
-					);
+					foreach (var pair in priceData)
+					{
+						var date = pair.Key;
+						var price = pair.Value;
+						table.Rows.Add(
+							symbol,
+							date,
+							price.Open,
+							price.High,
+							price.Low,
+							price.Close,
+							price.AdjustedClose,
+							price.Volume
+						);
+					}
+					bulkCopy.DestinationTableName = PriceTable;
+					bulkCopy.WriteToServer(table);
 				}
-				bulkCopy.DestinationTableName = PriceTable;
-				bulkCopy.WriteToServer(table);
+			}
+			catch (OverflowException)
+			{
+				Utility.WriteError("Failed to write data to database due to an arithmetic overflow");
 			}
 		}
 

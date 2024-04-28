@@ -1,4 +1,6 @@
-﻿using System.Collections.Concurrent;
+﻿using Fundamentalist.Common.Json;
+using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace Fundamentalist.Common
 {
@@ -6,17 +8,11 @@ namespace Fundamentalist.Common
 	{
 		public const string IndexTicker = "^GSPC";
 
-		public static List<string> GetTickers(string csvPath)
+		public static List<Ticker> GetTickersFromJson(string jsonPath)
 		{
-			var dictionary = new ConcurrentDictionary<string, bool>();
-			var lines = File.ReadAllLines(csvPath);
-			Parallel.ForEach(lines.Skip(1), line =>
-			{
-				var tokens = Split(line);
-				string ticker = tokens[0];
-				dictionary[ticker] = true;
-			});
-			var output = dictionary.Keys.Order().ToList();
+			string json = File.ReadAllText(jsonPath);
+			var tickers = JsonSerializer.Deserialize<Dictionary<string, Ticker>>(json);
+			var output = tickers.Values.ToList();
 			return output;
 		}
 
@@ -72,6 +68,8 @@ namespace Fundamentalist.Common
 			if (!File.Exists(csvPath))
 				return null;
 			var lines = File.ReadAllLines(csvPath);
+			if (lines.Length < 2)
+				return null;
 			var output = new SortedList<DateTime, PriceData>();
 			foreach (string line in lines.Skip(1))
 			{
@@ -85,6 +83,7 @@ namespace Fundamentalist.Common
 					High = decimal.Parse(tokens[2]),
 					Low = decimal.Parse(tokens[3]),
 					Close = decimal.Parse(tokens[4]),
+					AdjustedClose = decimal.Parse(tokens[5]),
 					Volume = long.Parse(tokens[6]),
 				};
 				if (

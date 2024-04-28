@@ -7,9 +7,12 @@ namespace Fundamentalist.Common
 {
 	public class XbrlParser
 	{
+		private const bool XbrlTestMode = false;
+		private const bool TickerTestMode = false;
+
 		public IEnumerable<Ticker> Tickers
 		{
-			get => _tickers.Values;
+			get => _tickers;
 		}
 
 		public IEnumerable<CompanyEarnings> Earnings
@@ -22,11 +25,10 @@ namespace Fundamentalist.Common
 		private int _progress;
 		private int _total;
 		private Stopwatch _stopwatch;
-		private Dictionary<int, Ticker> _tickers;
+		private List<Ticker> _tickers;
 		private int _tickerErrors;
 		private int? _maximumFeatureCount;
 		private ConcurrentDictionary<string, int> _formFrequency;
-		private HashSet<string> _priceDataTickers;
 
 		public void Load(string xbrlDirectory, string tickerPath, string priceDataDirectory, int? maximumFeatureCount = null)
 		{
@@ -35,10 +37,10 @@ namespace Fundamentalist.Common
 			_stopwatch.Start();
 			Console.WriteLine($"Reading tickers from {tickerPath}");
 			ReadTickers(tickerPath);
-			Console.WriteLine($"Filtering tickers using available price data in {priceDataDirectory}");
-			LoadPriceData(priceDataDirectory);
 			Console.WriteLine($"Processing XBRL files from {xbrlDirectory}");
 			var paths = Directory.GetFiles(xbrlDirectory, "*.json");
+			if (XbrlTestMode)
+				paths = paths.Take(10).ToArray();
 			_factFrequenies = new Dictionary<string, int>();
 			_companyEarnings = new ConcurrentBag<CompanyEarnings>();
 			_formFrequency = new ConcurrentDictionary<string, int>();
@@ -130,11 +132,9 @@ namespace Fundamentalist.Common
 
 		private void ReadTickers(string tickerPath)
 		{
-			_tickers = new Dictionary<int, Ticker>();
-			string json = File.ReadAllText(tickerPath);
-			var tickers = JsonSerializer.Deserialize<Dictionary<string, Ticker>>(json);
-			foreach (var x in tickers.Values)
-				_tickers[x.Cik] = x;
+			_tickers = DataReader.GetTickersFromJson(tickerPath);
+			if (TickerTestMode)
+				_tickers = _tickers.Take(50).ToList();
 		}
 
 		private void RunThread(ConcurrentQueue<string> queue)
@@ -170,8 +170,8 @@ namespace Fundamentalist.Common
 			var companyFacts = JsonSerializer.Deserialize<CompanyFacts>(json, options);
 			if (companyFacts.Facts == null)
 				return;
-			Ticker ticker;
-			if (!_tickers.TryGetValue(companyFacts.Cik, out ticker))
+			var ticker = _tickers.LastOrDefault(x => x.Cik == companyFacts.Cik);
+			if (ticker == null)
 			{
 				// Console.WriteLine($"Unable to determine ticker of CIK {companyFacts.Cik}");
 				Interlocked.Increment(ref _tickerErrors);
@@ -211,20 +211,6 @@ namespace Fundamentalist.Common
 			int sum = _formFrequency.Values.Sum();
 			foreach (var pair in _formFrequency.OrderBy(x => x.Key))
 				Console.WriteLine($"{pair.Key}: {(decimal)pair.Value / sum:P2}");
-		}
-
-		private void LoadPriceData(string priceDataDirectory)
-		{
-			var files = Directory.GetFiles(priceDataDirectory);
-			_priceDataTickers = new HashSet<string>(files.Select(Path.GetFileNameWithoutExtension));
-			var removeTickers = new List<int>();
-			foreach (var pair in _tickers)
-			{
-				if (!_priceDataTickers.Contains(pair.Value.Symbol))
-					removeTickers.Add(pair.Key);
-			}
-			foreach (int cik in removeTickers)
-				_tickers.Remove(cik);
 		}
 	}
 }
