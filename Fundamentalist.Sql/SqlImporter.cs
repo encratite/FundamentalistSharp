@@ -5,6 +5,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Web;
 
 namespace Fundamentalist.Sql
 {
@@ -72,20 +73,31 @@ namespace Fundamentalist.Sql
 				Console.WriteLine($"Setting industry and sector of {symbol}");
 				var document = new HtmlDocument();
 				document.Load(file);
-				var nodes = document.DocumentNode.SelectNodes("//a[@class='details-column-body']");
-				if (nodes.Count < 2)
+				var nodes = document.DocumentNode.SelectNodes("//div[@class='json_box']/div[2]/div/span");
+				if (nodes == null || nodes.Count < 19)
 				{
 					Utility.WriteError($"Unable to determine industry and sector of {symbol}");
 					continue;
 				}
-				var getText = (int i) => nodes[i].InnerText.Trim();
-				string industry = getText(0);
-				string sector = getText(1);
+				var getText = (int i) =>
+				{
+					string encodedTExt = nodes[i].InnerText;
+					string output = HttpUtility.HtmlDecode(encodedTExt);
+					if (output.Length >= 2 && output[0] == '\'' && output[output.Length - 1] == '\'')
+						output = output.Substring(1, output.Length - 2);
+					if (output.Length == 0 || output == "NULL")
+						output = null;
+					else
+						output = output.Trim();
+					return output;
+				};
+				string industry = getText(17);
+				string sector = getText(18);
 				using (var command = new SqlCommand("update ticker set industry = @industry, sector = @sector where symbol = @symbol", connection))
 				{
 					var parameters = command.Parameters;
-					parameters.AddWithValue("@industry", industry);
-					parameters.AddWithValue("@sector", sector);
+					parameters.AddWithValue("@industry", (object)industry ?? DBNull.Value);
+					parameters.AddWithValue("@sector", (object)sector ?? DBNull.Value);
 					parameters.AddWithValue("@symbol", symbol);
 					command.ExecuteNonQuery();
 				}

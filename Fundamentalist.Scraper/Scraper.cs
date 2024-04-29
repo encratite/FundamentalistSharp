@@ -10,12 +10,16 @@ namespace Fundamentalist.Scraper
 
 		public void Run(string tickersPath, string priceDataDirectory, string profileDirectory)
 		{
-			DownloadPriceData(DataReader.IndexTicker, priceDataDirectory);
 			var tickers = DataReader.GetTickersFromJson(tickersPath);
+			/*
+			DownloadPriceData(DataReader.IndexTicker, priceDataDirectory);
 			foreach (var ticker in tickers)
 				DownloadPriceData(ticker.Symbol, priceDataDirectory);
-			foreach (var ticker in tickers)
+			*/
+			Parallel.ForEach(tickers, ticker =>
+			{
 				DownloadProfileData(ticker.Symbol, profileDirectory);
+			});
 		}
 
 		private void DownloadFile(string uri, string path, int? sleepMilliseconds = null, int? expirationDays = null, bool createEmptyFiles = true)
@@ -81,8 +85,7 @@ namespace Fundamentalist.Scraper
 		private void DownloadProfileData(string ticker, string directory)
 		{
 			string encodedTicker = HttpUtility.UrlEncode(ticker);
-			// string uri = $"https://finance.yahoo.com/quote/{encodedTicker}/profile";
-			string uri = $"https://coindataflow.com/en/stock/{encodedTicker}";
+			string uri = $"https://eodhd.com/financial-summary/{encodedTicker}.NYSE";
 			string path = Path.Combine(directory, $"{ticker}.html");
 			DownloadFile(uri, path, 0, null, false);
 		}
