@@ -8,15 +8,17 @@ namespace Fundamentalist.Scraper
 	{
 		private HttpClient _httpClient = new HttpClient();
 
-		public void Run(string tickersPath, string directory)
+		public void Run(string tickersPath, string priceDataDirectory, string profileDirectory)
 		{
-			DownloadPriceData(DataReader.IndexTicker, directory);
+			DownloadPriceData(DataReader.IndexTicker, priceDataDirectory);
 			var tickers = DataReader.GetTickersFromJson(tickersPath);
 			foreach (var ticker in tickers)
-				DownloadPriceData(ticker.Symbol, directory);
+				DownloadPriceData(ticker.Symbol, priceDataDirectory);
+			foreach (var ticker in tickers)
+				DownloadProfileData(ticker.Symbol, profileDirectory);
 		}
 
-		private void DownloadFile(string uri, string path, int? sleepMilliseconds = null, int? expirationDays = null)
+		private void DownloadFile(string uri, string path, int? sleepMilliseconds = null, int? expirationDays = null, bool createEmptyFiles = true)
 		{
 			bool updateFile = false;
 			if (File.Exists(path))
@@ -58,7 +60,7 @@ namespace Fundamentalist.Scraper
 				if (httpException != null)
 				{
 					Utility.WriteError($"{message} ({httpException.StatusCode})");
-					if (httpException.StatusCode == HttpStatusCode.NotFound)
+					if (createEmptyFiles && httpException.StatusCode == HttpStatusCode.NotFound)
 						File.Create(path);
 				}
 				else
@@ -73,7 +75,16 @@ namespace Fundamentalist.Scraper
 			string encodedTicker = HttpUtility.UrlEncode(ticker);
 			string uri = $"https://query1.finance.yahoo.com/v7/finance/download/{encodedTicker}?period1=0&period2=2000000000&interval=1d&events=history";
 			string path = Path.Combine(directory, $"{ticker}.csv");
-			DownloadFile(uri, path, 1000, 7);
+			DownloadFile(uri, path, 1000, 7, true);
+		}
+
+		private void DownloadProfileData(string ticker, string directory)
+		{
+			string encodedTicker = HttpUtility.UrlEncode(ticker);
+			// string uri = $"https://finance.yahoo.com/quote/{encodedTicker}/profile";
+			string uri = $"https://coindataflow.com/en/stock/{encodedTicker}";
+			string path = Path.Combine(directory, $"{ticker}.html");
+			DownloadFile(uri, path, 0, null, false);
 		}
 	}
 }

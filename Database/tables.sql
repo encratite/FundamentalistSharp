@@ -12,6 +12,8 @@ create table ticker
 	symbol varchar(10) primary key,
 	cik int not null,
 	company varchar(80) not null,
+	sector varchar(100),
+	industry varchar(100),
 	exclude bit not null
 )
 
@@ -30,7 +32,8 @@ create table fact
 	frame varchar(9)
 )
 
-create clustered index fact_cik_filed_form_index on fact (cik, filed, form)
+create clustered index fact_form_filed_cik_index on fact (form, filed, cik)
+-- drop index fact_filed_form_index on fact
 
 create table price
 (
@@ -44,4 +47,5 @@ create table price
 	volume bigint not null
 )
 
-create clustered index price_symbol_date_index on price (symbol, date)
+create index price_date_index on price (date)
+create index price_symbol_date_index on price (symbol, date)

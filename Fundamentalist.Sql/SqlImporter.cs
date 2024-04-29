@@ -1,5 +1,6 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json;
+using HtmlAgilityPack;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
@@ -13,19 +14,20 @@ namespace Fundamentalist.Sql
 		const string FactTable = "fact";
 		const string PriceTable = "price";
 
-		public void Import(string xbrlDirectory, string tickerPath, string priceDataDirectory, string connectionString)
+		public void Import(string xbrlDirectory, string tickerPath, string priceDataDirectory, string profileDirectory, string connectionString)
 		{
-			var xbrlParser = new XbrlParser();
-			xbrlParser.Load(xbrlDirectory, tickerPath, priceDataDirectory);
+			// var xbrlParser = new XbrlParser();
+			// xbrlParser.Load(xbrlDirectory, tickerPath, priceDataDirectory);
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			using (var connection = new SqlConnection(connectionString))
 			{
 				connection.Open();
 				// ImportTickers(xbrlParser.Tickers, connection);
+				ImportProfileData(profileDirectory, connection);
 				// ImportEarnings(xbrlParser.Earnings, connection);
-				ImportPriceData(xbrlParser.Tickers, priceDataDirectory, connection);
-				ImportIndexPriceData(priceDataDirectory, connection);
+				// ImportPriceData(xbrlParser.Tickers, priceDataDirectory, connection);
+				// ImportIndexPriceData(priceDataDirectory, connection);
 			}
 			stopwatch.Stop();
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -58,6 +60,35 @@ namespace Fundamentalist.Sql
 			{
 				bulkCopy.DestinationTableName = TickerTable;
 				bulkCopy.WriteToServer(table);
+			}
+		}
+
+		private void ImportProfileData(string profileDirectory, SqlConnection connection)
+		{
+			var files = Directory.GetFiles(profileDirectory, "*.html");
+			foreach (string file in files)
+			{
+				string symbol = Path.GetFileNameWithoutExtension(file);
+				Console.WriteLine($"Setting industry and sector of {symbol}");
+				var document = new HtmlDocument();
+				document.Load(file);
+				var nodes = document.DocumentNode.SelectNodes("//a[@class='details-column-body']");
+				if (nodes.Count < 2)
+				{
+					Utility.WriteError($"Unable to determine industry and sector of {symbol}");
+					continue;
+				}
+				var getText = (int i) => nodes[i].InnerText.Trim();
+				string industry = getText(0);
+				string sector = getText(1);
+				using (var command = new SqlCommand("update ticker set industry = @industry, sector = @sector where symbol = @symbol", connection))
+				{
+					var parameters = command.Parameters;
+					parameters.AddWithValue("@industry", industry);
+					parameters.AddWithValue("@sector", sector);
+					parameters.AddWithValue("@symbol", symbol);
+					command.ExecuteNonQuery();
+				}
 			}
 		}
 

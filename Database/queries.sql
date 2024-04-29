@@ -6,6 +6,10 @@ if object_id('get_price_performance_distribution') is not null
 	drop procedure get_price_performance_distribution
 if object_id('get_price_performance_distribution_by_period') is not null
 	drop procedure get_price_performance_distribution_by_period
+if object_id('get_failed_stock_stats') is not null
+	drop procedure get_failed_stock_stats
+if object_id('get_failed_stocks') is not null
+	drop procedure get_failed_stocks
 go
 
 if object_id('get_ohlc') is not null
@@ -16,6 +20,8 @@ if object_id('get_price_performance_rows') is not null
 	drop function get_price_performance_rows
 if object_id('get_price_performance_rows') is not null
 	drop function get_price_performance_rows
+if object_id('get_symbol') is not null
+	drop function get_symbol
 go
 
 if type_id('performance_table_type') is not null
@@ -30,7 +36,7 @@ create type performance_table_type as table
 )
 go
 
-create function get_ohlc(@cik int, @date date)
+create function get_ohlc(@symbol varchar(10), @date date)
 returns table as
 return
 (
@@ -43,15 +49,15 @@ return
 	from price
 	where
 	(
-		(@cik is null and cik is null)
-		or cik = @cik
+		(@symbol is null and symbol is null)
+		or symbol = @symbol
 	)
 	and date >= @date
 	order by date
 )
 go
 
-create function get_close_price(@cik int, @date date)
+create function get_close_price(@symbol varchar(10), @date date)
 returns money as
 begin
 	return
@@ -61,8 +67,8 @@ begin
 		from price
 		where
 		(
-			(@cik is null and cik is null)
-			or cik = @cik
+			(@symbol is null and symbol is null)
+			or symbol = @symbol
 		)
 		and date >= @date
 		order by date
@@ -93,6 +99,20 @@ return
 	group by group_key
 go
 
+create function get_symbol(@cik int)
+returns varchar(10) as
+begin
+	return
+	(
+		select top 1 symbol
+		from ticker
+		where
+			cik = @cik
+			and exclude = 0
+	)
+end
+go
+
 create procedure get_form_frequency as
 begin
 	with cik_form as
@@ -110,7 +130,7 @@ begin
 end
 go
 
-create procedure get_facts_performance_distribution(@from date, @to date, @forecast_days int) as
+create procedure get_facts_performance_distribution(@from date, @to date, @forecast_days int, @form varchar(7)) as
 begin
 	declare @group_size int = 10;
 
@@ -118,14 +138,15 @@ begin
 	(
 		select top 100 percent
 			(
-				dbo.get_close_price(cik, dateadd(d, @forecast_days, filed)) / dbo.get_close_price(cik, filed)
+				dbo.get_close_price(dbo.get_symbol(cik), dateadd(d, @forecast_days, filed)) / dbo.get_close_price(dbo.get_symbol(cik), filed)
 				- dbo.get_close_price(null, dateadd(d, @forecast_days, filed)) / dbo.get_close_price(null, filed)
 			) as performance,
 			(count(*) / @group_size) * @group_size as group_key
 		from fact
 		where
-			(@from is null or filed >= @from) and
-			(@to is null or filed < @to)
+			(@from is null or fact.filed >= @from)
+			and (@to is null or fact.filed < @to)
+			and form = @form
 		group by cik, form, filed
 	)
 	select top 100 percent
@@ -143,16 +164,18 @@ create procedure get_price_performance_distribution(@from date, @to date, @forma
 begin
 	declare @performance performance_table_type
 
+	-- This is flawed in that it doesn't properly deal with prices and volumes of low liquidity stock
 	insert into @performance
 	select
 		ohlc_from.close_price price,
 		(
-			dbo.get_close_price(cik, @to) / ohlc_from.close_price
+			dbo.get_close_price(symbol, @to) / ohlc_from.close_price
 			- dbo.get_close_price(null, @to) / dbo.get_close_price(null, @from)
 		) as performance,
 		ohlc_from.close_price * ohlc_from.volume as volume
-	from company
-	cross apply get_ohlc(cik, @from) as ohlc_from
+	from ticker
+	cross apply get_ohlc(symbol, @from) as ohlc_from
+	where exclude = 0
 
 	declare @output table
 	(
@@ -212,7 +235,6 @@ begin
 	declare @now date = @from
 	while @now < @to
 	begin
-		print @now
 		declare @next date = dateadd(month, @months, @now)
 		insert into @output
 		exec get_price_performance_distribution @now, @next, 0
@@ -232,7 +254,18 @@ go
 
 create procedure get_failed_stock_stats as
 begin
-	declare @all int = (select count(*) from (select distinct cik from price) C)
+	declare @all int =
+	(
+		select count(*)
+		from
+		(
+			select distinct price.symbol
+			from
+				price join ticker
+				on price.symbol = ticker.symbol
+			where ticker.exclude = 0
+		) C
+	)
 
 	declare @failed int =
 	(
@@ -240,10 +273,13 @@ begin
 		from
 		(
 			select
-				cik,
+				price.symbol,
 				max(date) as date
-			from price
-			group by cik
+			from
+				price join ticker
+				on price.symbol = ticker.symbol
+			where ticker.exclude = 0
+			group by price.symbol
 			having max(date) < dateadd(month, -1, (select top 1 max(date) from price))
 		) C
 	)
@@ -252,5 +288,24 @@ begin
 		@all as all_stocks,
 		@failed as failed_stocks,
 		format(@failed / cast(@all as decimal), 'N3') as failure_rate
+end
+go
+
+create procedure get_failed_stocks as
+begin
+	select
+		P1.symbol,
+		max(date) as date,
+		coalesce(
+			dbo.get_close_price(P1.symbol, dateadd(year, -1, (select top 1 max(date) from price))),
+			(select top 1 close_price from price as P2 where P1.symbol = P2.symbol order by date)
+		) as price
+	from
+		price as P1 join ticker
+		on P1.symbol = ticker.symbol
+	where ticker.exclude = 0
+	group by P1.symbol
+	having max(date) < dateadd(month, -1, (select top 1 max(date) from price))
+	order by date desc
 end
 go
