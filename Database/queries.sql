@@ -200,10 +200,7 @@ begin
 	with fact_count as
 	(
 		select top 100 percent
-			(
-				dbo.get_close_price(dbo.get_symbol(cik), dateadd(d, @forecast_days, filed)) / dbo.get_close_price(dbo.get_symbol(cik), filed)
-				- dbo.get_close_price(null, dateadd(d, @forecast_days, filed)) / dbo.get_close_price(null, filed)
-			) as performance,
+			dbo.get_performance(dbo.get_symbol(cik), filed,  dateadd(d, @forecast_days, filed)) as performance,
 			(count(*) / @group_size) * @group_size as group_key
 		from fact
 		where
@@ -383,10 +380,7 @@ begin
 	(
 		select
 			F2.form,
-			(
-				dbo.get_close_price(ticker.symbol, dateadd(day, @forecast, F2.filed)) / dbo.get_close_price(ticker.symbol, F2.filed)
-				- dbo.get_close_price(null, dateadd(day, @forecast, F2.filed)) / dbo.get_close_price(null, F2.filed)
-			) as performance
+			dbo.get_performance(ticker.symbol, F2.filed, dateadd(day, @forecast, F2.filed)) as performance
 		from
 			(
 				select distinct form, cik, filed

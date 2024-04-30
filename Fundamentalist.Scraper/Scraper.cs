@@ -8,7 +8,7 @@ namespace Fundamentalist.Scraper
 	{
 		private HttpClient _httpClient = new HttpClient();
 
-		public void Run(string tickersPath, string priceDataDirectory, string profileDirectory)
+		public void Run(string tickersPath, string priceDataDirectory, string profileDirectory, string marketCapDirectory)
 		{
 			var tickers = DataReader.GetTickersFromJson(tickersPath);
 			/*
@@ -16,10 +16,14 @@ namespace Fundamentalist.Scraper
 			foreach (var ticker in tickers)
 				DownloadPriceData(ticker.Symbol, priceDataDirectory);
 			*/
+			/*
 			Parallel.ForEach(tickers, ticker =>
 			{
 				DownloadProfileData(ticker.Symbol, profileDirectory);
 			});
+			*/
+			foreach (var ticker in tickers)
+				DownloadMarketCapData(ticker.Symbol, marketCapDirectory);
 		}
 
 		private void DownloadFile(string uri, string path, int? sleepMilliseconds = null, int? expirationDays = null, bool createEmptyFiles = true)
@@ -88,6 +92,14 @@ namespace Fundamentalist.Scraper
 			string uri = $"https://eodhd.com/financial-summary/{encodedTicker}.NYSE";
 			string path = Path.Combine(directory, $"{ticker}.html");
 			DownloadFile(uri, path, 0, null, false);
+		}
+
+		private void DownloadMarketCapData(string ticker, string directory)
+		{
+			string encodedTicker = HttpUtility.UrlEncode(ticker);
+			string uri = $"https://www.macrotrends.net/assets/php/market_cap.php?t={encodedTicker}";
+			string path = Path.Combine(directory, $"{ticker}.html");
+			DownloadFile(uri, path, 2000, null, false);
 		}
 	}
 }

@@ -1,5 +1,4 @@
-﻿using Fundamentalist.Common;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Fundamentalist.Common.Json
 {
