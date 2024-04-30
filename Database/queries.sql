@@ -10,6 +10,8 @@ if object_id('get_failed_stock_stats') is not null
 	drop procedure get_failed_stock_stats
 if object_id('get_failed_stocks') is not null
 	drop procedure get_failed_stocks
+if object_id('get_form_performance') is not null
+	drop procedure get_form_performance
 go
 
 if object_id('get_ohlc') is not null
@@ -22,6 +24,12 @@ if object_id('get_price_performance_rows') is not null
 	drop function get_price_performance_rows
 if object_id('get_symbol') is not null
 	drop function get_symbol
+if object_id('get_performance') is not null
+	drop function get_performance
+if object_id('get_industry_sector_stats') is not null
+	drop function get_industry_sector_stats
+if object_id('get_industry_stats') is not null
+	drop function get_industry_stats
 go
 
 if type_id('performance_table_type') is not null
@@ -111,6 +119,61 @@ begin
 			and exclude = 0
 	)
 end
+go
+
+create function get_performance(@symbol varchar(10), @from date, @to date)
+returns money as
+begin
+	return
+		dbo.get_close_price(@symbol, @to) / dbo.get_close_price(@symbol, @from)
+		- dbo.get_close_price(null, @to) / dbo.get_close_price(null, @from)
+end
+go
+
+create function get_industry_sector_stats(@from date, @to date)
+returns table as
+return
+	select
+		industry,
+		sector,
+		avg(performance) performance,
+		count(*) count
+	from
+	(
+		select
+			industry,
+			sector,
+			least(dbo.get_performance(ticker.symbol, @from, @to), 10) as performance
+		from ticker
+		where
+			exclude = 0
+			and industry is not null
+			and sector is not null
+	) T
+	where performance is not null
+	group by industry, sector
+go
+
+create function get_industry_stats(@from date, @to date)
+returns table as
+return
+	select
+		industry,
+		avg(performance) performance,
+		count(*) count
+	from
+	(
+		select
+			industry,
+			least(dbo.get_performance(ticker.symbol, @from, @to), 10) as performance
+		from ticker
+		where
+			exclude = 0
+			and industry is not null
+			and sector is not null
+	) T
+	where performance is not null
+	group by industry
 go
 
 create procedure get_form_frequency as
@@ -307,5 +370,33 @@ begin
 	group by P1.symbol
 	having max(date) < dateadd(month, -1, (select top 1 max(date) from price))
 	order by date desc
+end
+go
+
+create procedure get_form_performance(@from date, @to date, @forecast int) as
+begin
+	select
+		form,
+		avg(performance) as performance,
+		count(performance) as count
+	from
+	(
+		select
+			F2.form,
+			(
+				dbo.get_close_price(ticker.symbol, dateadd(day, @forecast, F2.filed)) / dbo.get_close_price(ticker.symbol, F2.filed)
+				- dbo.get_close_price(null, dateadd(day, @forecast, F2.filed)) / dbo.get_close_price(null, F2.filed)
+			) as performance
+		from
+			(
+				select distinct form, cik, filed
+				from fact
+				where filed >= @from and filed < @to
+			) F2 join ticker
+			on F2.cik = ticker.cik
+		where ticker.exclude = 0
+	) F1
+	group by form
+	order by performance desc
 end
 go
