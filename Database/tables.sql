@@ -33,11 +33,11 @@ create table fact
 )
 
 create clustered index fact_form_filed_cik_index on fact (form, filed, cik)
--- drop index fact_filed_form_index on fact
+create index fact_filed_index on fact (filed)
 
 create table price
 (
-	symbol varchar(10) references ticker (symbol) on delete cascade,
+	symbol varchar(10) references ticker (symbol) not null,
 	date date not null,
 	open_price money not null,
 	high money not null,
@@ -49,3 +49,13 @@ create table price
 
 create index price_date_index on price (date)
 create index price_symbol_date_index on price (symbol, date)
+
+create table market_cap
+(
+	symbol varchar(10) references ticker (symbol) not null,
+	date date not null,
+	-- Multiples of $100k dollars
+	market_cap int not null
+)
+
+create clustered index market_cap_symbol_date_index on market_cap (symbol, date)

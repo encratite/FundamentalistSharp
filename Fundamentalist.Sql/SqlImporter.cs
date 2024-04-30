@@ -4,6 +4,8 @@ using HtmlAgilityPack;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Web;
 
@@ -14,8 +16,9 @@ namespace Fundamentalist.Sql
 		const string TickerTable = "ticker";
 		const string FactTable = "fact";
 		const string PriceTable = "price";
+		const string MarketCapTable = "market_cap";
 
-		public void Import(string xbrlDirectory, string tickerPath, string priceDataDirectory, string profileDirectory, string connectionString)
+		public void Import(string xbrlDirectory, string tickerPath, string priceDataDirectory, string profileDirectory, string marketCapDirectory, string connectionString)
 		{
 			// var xbrlParser = new XbrlParser();
 			// xbrlParser.Load(xbrlDirectory, tickerPath, priceDataDirectory);
@@ -25,7 +28,8 @@ namespace Fundamentalist.Sql
 			{
 				connection.Open();
 				// ImportTickers(xbrlParser.Tickers, connection);
-				ImportProfileData(profileDirectory, connection);
+				// ImportProfileData(profileDirectory, connection);
+				ImportMarketCapData(marketCapDirectory, connection);
 				// ImportEarnings(xbrlParser.Earnings, connection);
 				// ImportPriceData(xbrlParser.Tickers, priceDataDirectory, connection);
 				// ImportIndexPriceData(priceDataDirectory, connection);
@@ -104,6 +108,52 @@ namespace Fundamentalist.Sql
 			}
 		}
 
+		private void ImportMarketCapData(string marketCapDirectory, SqlConnection connection)
+		{
+			Console.WriteLine("Importing market cap data");
+			TruncateTable(MarketCapTable, connection);
+			var pattern = new Regex("data = (\\[\\{\"d\".+?\\}\\]);", RegexOptions.Multiline);
+			var paths = Directory.GetFiles(marketCapDirectory, "*.html");
+			foreach (string path in paths)
+			{
+				if (path.Contains("Index-"))
+					continue;
+				string symbol = Path.GetFileNameWithoutExtension(path);
+				string html = File.ReadAllText(path);
+				var match = pattern.Match(html);
+				if (!match.Success)
+				{
+					Utility.WriteError($"Failed to extract JavaScript from {path}");
+					continue;
+				}
+				string json = match.Groups[1].Value;
+				var samples = JsonSerializer.Deserialize<MarketCapSample[]>(json);
+				ImportMarketCapSamples(symbol, samples, connection);
+			}
+		}
+
+		private void ImportMarketCapSamples(string symbol, MarketCapSample[] samples, SqlConnection connection)
+		{
+			Console.WriteLine($"Importing market cap data for {symbol}");
+			using (var bulkCopy = GetBulkCopy(connection))
+			{
+				var table = new DataTable(MarketCapTable);
+				table.Columns.AddRange(new DataColumn[]
+				{
+						new DataColumn("symbol", typeof(string)),
+						new DataColumn("date", typeof(DateTime)),
+						new DataColumn("value", typeof(int)),
+				});
+				foreach (var sample in samples)
+				{
+					DateTime date = DateTimeOffset.FromUnixTimeMilliseconds(sample.Timestamp * 1000).UtcDateTime;
+					table.Rows.Add(symbol, date, sample.MarketCap);
+				}
+				bulkCopy.DestinationTableName = MarketCapTable;
+				bulkCopy.WriteToServer(table);
+			}
+		}
+
 		private void ImportEarnings(IEnumerable<CompanyEarnings> companyEarnings, SqlConnection connection)
 		{
 			Console.WriteLine("Importing earnings reports");
@@ -115,7 +165,7 @@ namespace Fundamentalist.Sql
 				var ticker = earnings.Ticker;
 				int cik = earnings.Ticker.Cik;
 				PrintProgress(i, count, ticker);
-				using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
+				using (var bulkCopy = GetBulkCopy(connection))
 				{
 					var table = new DataTable(FactTable);
 					table.Columns.AddRange(new DataColumn[]
@@ -195,7 +245,7 @@ namespace Fundamentalist.Sql
 			});
 			try
 			{
-				using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction, null))
+				using (var bulkCopy = GetBulkCopy(connection))
 				{
 					foreach (var pair in priceData)
 					{

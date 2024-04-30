@@ -394,3 +394,46 @@ begin
 	order by performance desc
 end
 go
+
+create procedure get_market_cap_performance(@from date, @to date) as
+begin
+	with M as
+	(
+		select
+			(
+				select top 1
+					(case
+						when market_cap < 100 then 0
+						when market_cap < 500 then 100
+						when market_cap < 1000 then 500
+						when market_cap < 2500 then 1000
+						when market_cap < 5000 then 2500
+						when market_cap < 10000 then 5000
+						when market_cap < 50000 then 10000
+						when market_cap < 100000 then 50000
+						when market_cap < 500000 then 100000
+						when market_cap < 1000000 then 500000
+						when market_cap < 5000000 then 1000000
+						else 5000000
+					end) as market_cap
+				from market_cap
+				where
+					ticker.symbol = market_cap.symbol
+					and market_cap.date <= @from 
+				order by market_cap.date desc
+			) as market_cap,
+			least(dbo.get_performance(ticker.symbol, @from, @to), 10) as performance
+		from ticker
+		where
+			ticker.exclude = 0
+			and exists (select * from market_cap where ticker.symbol = market_cap.symbol and market_cap.date <= @from)
+	)
+	select
+		market_cap,
+		avg(performance) as performance,
+		count(*) as count
+	from M
+	group by M.market_cap
+	order by market_cap
+end
+go
