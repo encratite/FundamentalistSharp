@@ -1,4 +1,6 @@
 ﻿using Fundamentalist.Common;
+using HtmlAgilityPack;
+using System;
 using System.Net;
 using System.Web;
 
@@ -22,8 +24,7 @@ namespace Fundamentalist.Scraper
 				DownloadProfileData(ticker.Symbol, profileDirectory);
 			});
 			*/
-			foreach (var ticker in tickers)
-				DownloadMarketCapData(ticker.Symbol, marketCapDirectory);
+			DownloadMarketCapData(marketCapDirectory);
 		}
 
 		private void DownloadFile(string uri, string path, int? sleepMilliseconds = null, int? expirationDays = null, bool createEmptyFiles = true)
@@ -94,12 +95,42 @@ namespace Fundamentalist.Scraper
 			DownloadFile(uri, path, 0, null, false);
 		}
 
-		private void DownloadMarketCapData(string ticker, string directory)
+		private void DownloadMarketCapData(string directory)
 		{
-			string encodedTicker = HttpUtility.UrlEncode(ticker);
-			string uri = $"https://www.macrotrends.net/assets/php/market_cap.php?t={encodedTicker}";
-			string path = Path.Combine(directory, $"{ticker}.html");
-			DownloadFile(uri, path, 2000, null, false);
+			var paths = new List<string>();
+			for (int i = 1; i <= 37; i++)
+			{
+				string uri = $"https://companiesmarketcap.com/usa/largest-companies-in-the-usa-by-market-cap/?page={i}";
+				string path = Path.Combine(directory, $"Index-{i}.html");
+				DownloadFile(uri, path, 0, null, false);
+				paths.Add(path);
+			}
+			foreach (string path in paths)
+			{
+				var document = new HtmlDocument();
+				document.Load(path);
+				var nodes = document.DocumentNode.SelectNodes("//div[@class='name-div']/a[contains(@href, '/marketcap/')]");
+				if (nodes == null)
+				{
+					Utility.WriteError($"Unable to extract market cap links form {path}");
+					continue;
+				}
+				Parallel.ForEach(nodes, node =>
+				{
+					var symbolDiv = node.SelectSingleNode("div[@class='company-code']");
+					if (symbolDiv == null)
+					{
+						Utility.WriteError($"Unable to determine symbol name {path}");
+						return;
+					}
+					string symbol = symbolDiv.InnerText.Trim();
+					string relativePath = node.GetAttributeValue("href", null);
+					var baseUri = new Uri("https://companiesmarketcap.com");
+					var marketCapUri = new Uri(baseUri, relativePath);
+					string symbolPath = Path.Combine(directory, $"{symbol}.html");
+					DownloadFile(marketCapUri.ToString(), symbolPath, 0, null, false);
+				});
+			}
 		}
 	}
 }
