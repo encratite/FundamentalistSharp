@@ -12,6 +12,8 @@ if object_id('get_failed_stocks') is not null
 	drop procedure get_failed_stocks
 if object_id('get_form_performance') is not null
 	drop procedure get_form_performance
+if object_id('get_market_cap_performance') is not null
+	drop procedure get_market_cap_performance
 go
 
 if object_id('get_ohlc') is not null
@@ -30,6 +32,8 @@ if object_id('get_industry_sector_stats') is not null
 	drop function get_industry_sector_stats
 if object_id('get_industry_stats') is not null
 	drop function get_industry_stats
+if object_id('get_label') is not null
+	drop function get_label
 go
 
 if type_id('performance_table_type') is not null
@@ -176,6 +180,63 @@ return
 	group by industry
 go
 
+create function get_label(@symbol varchar(10), @from date, @upper money, @lower money, @days int)
+returns money as
+begin
+	declare @prices table
+	(
+		date date,
+		stock_open money,
+		stock_close money,
+		index_open money,
+		index_close money
+	)
+	insert into @prices
+	select top (@days)
+		P1.date,
+		P1.close_price as stock_close,
+		P2.close_price as index_close
+	from
+		price as P1 join price as P2
+		on P1.date = P2.date
+	where
+		P1.date >= @from
+		and P1.symbol = @symbol
+		and P2.symbol is null
+		and P2.date >= @from
+	order by P1.date
+
+	declare @first_date date
+	declare @first_stock_open money
+	declare @first_index_open money
+	select top 1
+		@first_date = date,
+		@first_stock_open = stock_open,
+		@first_index_open = index_open
+	from @prices
+	order by date
+
+	declare @performance money
+	select top 1
+		@performance = greatest(least(performance, @upper), @lower)
+	from
+	(
+		select
+			date,
+			stock_close / @first_stock_open - index_close / @first_index_open as performance
+		from @prices
+		where date > @first_date
+	) as P
+	where
+		performance < @lower
+		or performance > @upper
+		or date = (select max(date) from @prices)
+	order by date
+
+	return @performance
+end
+go
+
 create procedure get_form_frequency as
 begin
 	with cik_form as
@@ -200,7 +261,8 @@ begin
 	with fact_count as
 	(
 		select top 100 percent
-			dbo.get_performance(dbo.get_symbol(cik), filed,  dateadd(d, @forecast_days, filed)) as performance,
+			-- dbo.get_performance(dbo.get_symbol(cik), filed,  dateadd(d, @forecast_days, filed)) as performance,
+			dbo.get_label(dbo.get_symbol(cik), dateadd(day, 1, filed), 0.1, -0.1, @forecast_days) as performance,
 			(count(*) / @group_size) * @group_size as group_key
 		from fact
 		where
@@ -211,7 +273,7 @@ begin
 	)
 	select top 100 percent
 		group_key as facts,
-		format(avg(performance), 'N2') as performance,
+		format(avg(performance), 'N3') as performance,
 		count(*) as count
 	from fact_count
 	where performance is not null
@@ -380,7 +442,8 @@ begin
 	(
 		select
 			F2.form,
-			dbo.get_performance(ticker.symbol, F2.filed, dateadd(day, @forecast, F2.filed)) as performance
+			-- dbo.get_performance(ticker.symbol, F2.filed, dateadd(day, @forecast, F2.filed)) as performance
+			dbo.get_label(ticker.symbol, dateadd(day, 1, F2.filed), 0.1, -0.1, @forecast) as performance
 		from
 			(
 				select distinct form, cik, filed
@@ -422,7 +485,8 @@ begin
 					and market_cap.date <= @from 
 				order by market_cap.date desc
 			) as market_cap,
-			least(dbo.get_performance(ticker.symbol, @from, @to), 10) as performance
+			-- least(dbo.get_performance(ticker.symbol, @from, @to), 10) as performance
+			dbo.get_label(ticker.symbol, dateadd(day, 1, @from), 0.5, -0.1, datediff(day, @from, @to)) as performance
 		from ticker
 		where
 			ticker.exclude = 0
