@@ -5,13 +5,12 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Web;
 
-namespace Fundamentalist.Sql
+namespace Fundamentalist.SqlImport
 {
-	internal class SqlImporter
+	internal class SqlImport
 	{
 		const string TickerTable = "ticker";
 		const string FactTable = "fact";

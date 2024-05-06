@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace Fundamentalist.Sql
+namespace Fundamentalist.SqlImport
 {
 	internal class MarketCapSample
 	{

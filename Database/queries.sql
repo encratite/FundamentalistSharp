@@ -194,7 +194,9 @@ begin
 	insert into @prices
 	select top (@days)
 		P1.date,
+		P1.open_price as stock_open,
 		P1.close_price as stock_close,
+		P2.open_price as index_open,
 		P2.close_price as index_close
 	from
 		price as P1 join price as P2

@@ -1,6 +1,6 @@
 ﻿using System.Reflection;
 
-namespace Fundamentalist.Sql
+namespace Fundamentalist.SqlImport
 {
 	internal class Program
 	{
@@ -20,8 +20,8 @@ namespace Fundamentalist.Sql
 			string profileDirectory = arguments[3];
 			string marketCapDirectory = arguments[4];
 			string connectionString = arguments[5];
-			var sqlImporter = new SqlImporter();
-			sqlImporter.Import(xbrlDirectory, tickerPath, priceDataDirectory, profileDirectory, marketCapDirectory, connectionString);
+			var sqlImport = new SqlImport();
+			sqlImport.Import(xbrlDirectory, tickerPath, priceDataDirectory, profileDirectory, marketCapDirectory, connectionString);
 		}
 	}
 }

@@ -13,9 +13,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Xbrl", "Fund
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Correlation", "Fundamentalist.Correlation\Fundamentalist.Correlation.csproj", "{D95C15FC-4870-4919-8D17-8575D448E181}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fundamentalist.LeadLag", "Fundamentalist.LeadLag\Fundamentalist.LeadLag.csproj", "{E276DCDA-DE8C-421F-BC5E-7F48843CF091}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.LeadLag", "Fundamentalist.LeadLag\Fundamentalist.LeadLag.csproj", "{E276DCDA-DE8C-421F-BC5E-7F48843CF091}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fundamentalist.Sql", "Fundamentalist.Sql\Fundamentalist.Sql.csproj", "{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.SqlImport", "Fundamentalist.SqlImport\Fundamentalist.SqlImport.csproj", "{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fundamentalist.SqlAnalysis", "Fundamentalist.SqlAnalysis\Fundamentalist.SqlAnalysis.csproj", "{6BB43D02-4A22-495C-80BC-5C738057329A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -51,6 +53,10 @@ Global
 		{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6BB43D02-4A22-495C-80BC-5C738057329A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6BB43D02-4A22-495C-80BC-5C738057329A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6BB43D02-4A22-495C-80BC-5C738057329A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6BB43D02-4A22-495C-80BC-5C738057329A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

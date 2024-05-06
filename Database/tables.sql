@@ -34,6 +34,8 @@ create table fact
 
 create clustered index fact_form_filed_cik_index on fact (form, filed, cik)
 create index fact_filed_index on fact (filed)
+create index fact_name_filed_index on fact (name, filed)
+create index fact_cik_form_filed_index on fact (cik, form, filed)
 
 create table price
 (
