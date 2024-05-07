@@ -8,24 +8,28 @@ namespace Fundamentalist.SqlAnalysis
 	internal class SqlAnalysis
 	{
 		private const int MinimumDays = 20;
+		private const decimal MinimumFrequency = 0.01m;
 
 		public void Run(DateTime from, DateTime to, decimal upper, decimal lower, int limit, string form, string connectionString)
 		{
 			using (var connection = new SqlConnection(connectionString))
 			{
+				Console.WriteLine("Loading SEC filings and price data from database");
+				var stopwatch = new Stopwatch();
+				stopwatch.Start();
 				connection.Open();
 				var factsTable = GetFactsTable(from, to, form, connection);
 				var indexTable = GetIndexTable(from, to, limit, connection);
 				var priceTable = GetPriceTable(from, to, limit, form, connection);
-				var performance = CalculatePerformance(upper, lower, limit, indexTable, priceTable);
+				stopwatch.Stop();
+				Console.WriteLine($"Finished loading data in {stopwatch.Elapsed.TotalSeconds:F1} s");
+				var performanceData = CalculatePerformance(upper, lower, limit, indexTable, priceTable);
+				EvaluateFacts(factsTable, performanceData);
 			}
 		}
 
 		private DataTable GetFactsTable(DateTime from, DateTime to, string form, SqlConnection connection)
 		{
-			Console.WriteLine("Loading facts");
-			var stopwatch = new Stopwatch();
-			stopwatch.Start();
 			string query = @"
 				select
 					symbol,
@@ -51,16 +55,11 @@ namespace Fundamentalist.SqlAnalysis
 					adapter.Fill(dataTable);
 				}
 			}
-			stopwatch.Stop();
-			Console.WriteLine($"Finished loading facts in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			return dataTable;
 		}
 
 		private DataTable GetIndexTable(DateTime from, DateTime to, int limit, SqlConnection connection)
 		{
-			Console.WriteLine("Loading index price data");
-			var stopwatch = new Stopwatch();
-			stopwatch.Start();
 			string query = @"
 				select
 					date,
@@ -84,16 +83,11 @@ namespace Fundamentalist.SqlAnalysis
 					adapter.Fill(dataTable);
 				}
 			}
-			stopwatch.Stop();
-			Console.WriteLine($"Finished loading index price data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			return dataTable;
 		}
 
 		private DataTable GetPriceTable(DateTime from, DateTime to, int limit, string form, SqlConnection connection)
 		{
-			Console.WriteLine("Loading stock price data");
-			var stopwatch = new Stopwatch();
-			stopwatch.Start();
 			string query = @"
 				select
 					S.symbol,
@@ -133,8 +127,6 @@ namespace Fundamentalist.SqlAnalysis
 					adapter.Fill(dataTable);
 				}
 			}
-			stopwatch.Stop();
-			Console.WriteLine($"Finished loading stock price data in {stopwatch.Elapsed.TotalSeconds:F1} s");
 			return dataTable;
 		}
 
@@ -152,7 +144,7 @@ namespace Fundamentalist.SqlAnalysis
 				var openClosePrice = new OpenClosePrice(open, close);
 				indexPrices[date] = openClosePrice;
 			}
-			var performanceValues = new ConcurrentDictionary<PriceKey, MeanAggregator>();
+			var performanceValues = new ConcurrentDictionary<PriceKey, StatsAggregator>();
 			PriceKey priceKey = null;
 			int offset = 0;
 			var symbolRows = new List<RowRange>();
@@ -175,7 +167,7 @@ namespace Fundamentalist.SqlAnalysis
 			}
 			Action<decimal, PriceKey> aggregatePerformance = (value, priceKey) =>
 			{
-				performanceValues.AddOrUpdate(priceKey, new MeanAggregator(value), (priceKey, aggregator) =>
+				performanceValues.AddOrUpdate(priceKey, new StatsAggregator(value), (priceKey, aggregator) =>
 				{
 					aggregator.Add(value);
 					return aggregator;
@@ -209,7 +201,7 @@ namespace Fundamentalist.SqlAnalysis
 				for (int i = rowRange.Start + 1; i < rowRange.End; i++)
 				{
 					var row = priceTable.Rows[i];
-					GetDateOpenClose(firstRow, out date, out open, out close);
+					GetDateOpenClose(row, out date, out open, out close);
 					currentIndexPrice = indexPrices[date];
 					var openPerformance = GetPerformance(firstClose, open, firstIndexPrice.Close, currentIndexPrice.Open);
 					if (boundaryCheck(openPerformance, key))
@@ -239,6 +231,44 @@ namespace Fundamentalist.SqlAnalysis
 		private decimal GetPerformance(decimal stockFrom, decimal stockTo, decimal indexFrom, decimal indexTo)
 		{
 			return stockTo / stockFrom - indexTo / indexFrom;
+		}
+
+		private void EvaluateFacts(DataTable factsTable, Dictionary<PriceKey, decimal> performanceData)
+		{
+			Console.WriteLine("Evaluating facts");
+			var stopwatch = new Stopwatch();
+			stopwatch.Start();
+			var facts = new ConcurrentDictionary<string, StatsAggregator>();
+			Parallel.ForEach(factsTable.AsEnumerable(), row =>
+			{
+				string symbol = row.Field<string>("symbol");
+				DateTime filed = row.Field<DateTime>("filed");
+				string fact = row.Field<string>("name");
+				var priceKey = new PriceKey(symbol, filed);
+				decimal performance;
+				if (!performanceData.TryGetValue(priceKey, out performance))
+					return;
+				facts.AddOrUpdate(fact, new StatsAggregator(performance), (fact, aggregator) =>
+				{
+					aggregator.Add(performance);
+					return aggregator;
+				});
+			});
+			var commonFacts = facts.Where(pair => (decimal)pair.Value.Count / performanceData.Count > MinimumFrequency).ToList();
+			Parallel.ForEach(commonFacts, pair => pair.Value.UpdateStats());
+			stopwatch.Stop();
+			Console.WriteLine($"Finished evaluating facts in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			int rank = 1;
+			foreach (var pair in commonFacts.OrderByDescending(pair => pair.Value.Mean))
+			{
+				string fact = pair.Key;
+				var aggregator = pair.Value;
+				var frequency = (decimal)aggregator.Count / performanceData.Count;
+				if (frequency < MinimumFrequency)
+					continue;
+				Console.WriteLine($"{rank}. {fact}: μ = {aggregator.Mean:F3}, σ = {aggregator.StandardDeviation:F3} ({aggregator.Count}, {frequency:P2})");
+				rank++;
+			}
 		}
 	}
 }

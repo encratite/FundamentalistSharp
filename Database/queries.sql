@@ -38,6 +38,8 @@ go
 
 if type_id('performance_table_type') is not null
 	drop type performance_table_type
+if type_id('get_label_prices_type') is not null
+	drop type get_label_prices_type
 go
 
 create type performance_table_type as table
@@ -46,6 +48,17 @@ create type performance_table_type as table
 	performance decimal,
 	volume money
 )
+go
+
+create type get_label_prices_type as table
+(
+	date date index date_index,
+	stock_open money,
+	stock_close money,
+	index_open money,
+	index_close money
+)
+-- with (memory_optimized = on)
 go
 
 create function get_ohlc(@symbol varchar(10), @date date)
@@ -183,14 +196,7 @@ go
 create function get_label(@symbol varchar(10), @from date, @upper money, @lower money, @days int)
 returns money as
 begin
-	declare @prices table
-	(
-		date date,
-		stock_open money,
-		stock_close money,
-		index_open money,
-		index_close money
-	)
+	declare @prices get_label_prices_type
 	insert into @prices
 	select top (@days)
 		P1.date,
