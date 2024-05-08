@@ -164,29 +164,33 @@ namespace Fundamentalist.SqlImport
 		{
 			Console.WriteLine("Importing earnings reports");
 			TruncateTable(FactTable, connection);
-			var allCompanyFacts = new ConcurrentBag<CompanyFacts>();
 			_progress = 0;
 			using (var zipFile = ZipFile.OpenRead(companyFactsPath))
 			{
 				_total = zipFile.Entries.Count;
 			}
 			var threads = new List<Thread>();
-			int threadCount = 4;
+			int threadCount = 1;
 			_earningsStopwatch = new Stopwatch();
 			_earningsStopwatch.Start();
+			var companyFactsCollection = new BlockingCollection<CompanyFacts>();
 			for (int i = 0; i < threadCount; i++)
 			{
 				int threadId = i;
-				var thread = new Thread(() => RunEarningsThread(companyFactsPath, threadId, threadCount, connection, allCompanyFacts));
+				var thread = new Thread(() => RunEarningsThread(companyFactsPath, threadId, threadCount, companyFactsCollection, connection));
 				thread.Start();
 				threads.Add(thread);
 			}
+			var importThread = new Thread(() => RunImportEarningsThread(companyFactsCollection, connection));
+			importThread.Start();
 			foreach (var thread in threads)
 				thread.Join();
-			ImportCompanyFacts(allCompanyFacts, connection);
+			companyFactsCollection.CompleteAdding();
+			importThread.Join();
+			_earningsStopwatch.Stop();
 		}
 
-		private void RunEarningsThread(string companyFactsPath, int threadId, int threadCount, SqlConnection connection, ConcurrentBag<CompanyFacts> allCompanyFacts)
+		private void RunEarningsThread(string companyFactsPath, int threadId, int threadCount, BlockingCollection<CompanyFacts> companyFactsCollection, SqlConnection connection)
 		{
 			using (var zipFile = ZipFile.OpenRead(companyFactsPath))
 			{
@@ -207,7 +211,7 @@ namespace Fundamentalist.SqlImport
 									PropertyNameCaseInsensitive = true
 								};
 								var companyFacts = JsonSerializer.Deserialize<CompanyFacts>(json, options);
-								allCompanyFacts.Add(companyFacts);
+								companyFactsCollection.Add(companyFacts);
 							}
 						}
 					}
@@ -216,8 +220,31 @@ namespace Fundamentalist.SqlImport
 			}
 		}
 
-		private void ImportCompanyFacts(ConcurrentBag<CompanyFacts> allCompanyFacts, SqlConnection connection)
+		private void RunImportEarningsThread(BlockingCollection<CompanyFacts> companyFactsCollection, SqlConnection connection)
 		{
+			const int BatchSize = 100;
+			var batch = new List<CompanyFacts>();
+			int progress = 0;
+			foreach (var companyFacts in companyFactsCollection.GetConsumingEnumerable())
+			{
+				batch.Add(companyFacts);
+				if (batch.Count >= BatchSize)
+				{
+					progress += BatchSize;
+					ImportCompanyFacts(progress, batch, connection);
+					batch.Clear();
+				}
+			}
+			if (batch.Any())
+			{
+				progress += batch.Count;
+				ImportCompanyFacts(progress, batch, connection);
+			}
+		}
+
+		private void ImportCompanyFacts(int progress, List<CompanyFacts> batch, SqlConnection connection)
+		{
+			Console.WriteLine($"Writing batch to database ({progress}/{_total}, {progress / _earningsStopwatch.Elapsed.TotalSeconds:F2}/s)");
 			using (var bulkCopy = GetBulkCopy(connection))
 			{
 				var table = new DataTable(FactTable);
@@ -233,7 +260,7 @@ namespace Fundamentalist.SqlImport
 						new DataColumn("filed", typeof(DateTime)),
 						new DataColumn("frame", typeof(string)),
 				});
-				foreach (var companyFacts in allCompanyFacts)
+				foreach (var companyFacts in batch)
 				{
 					foreach (var fact in companyFacts.Facts)
 					{
