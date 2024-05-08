@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Text.Json;
 
 namespace Fundamentalist.SqlAnalysis
 {
@@ -6,25 +7,23 @@ namespace Fundamentalist.SqlAnalysis
 	{
 		static void Main(string[] arguments)
 		{
-			if (arguments.Length != 7)
+			if (arguments.Length != 1)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
-				Console.WriteLine($"{name.Name} <from> <to> <upper> <lower> <limit> <form> <SQL Server connection string>");
+				Console.WriteLine($"{name.Name} <configuration JSON file>");
 				return;
 			}
-			int offset = 0;
-			var getArgument = () => arguments[offset++];
-			DateTime from = DateTime.Parse(getArgument());
-			DateTime to = DateTime.Parse(getArgument());
-			decimal upper = decimal.Parse(getArgument());
-			decimal lower = decimal.Parse(getArgument());
-			int limit = int.Parse(getArgument());
-			string form = getArgument();
-			string connectionString = getArgument();
+			string jsonConfiguration = File.ReadAllText(arguments[0]);
+			var options = new JsonSerializerOptions
+			{
+				PropertyNameCaseInsensitive = true
+			};
+			var configuration = JsonSerializer.Deserialize<Configuration>(jsonConfiguration, options);
+			configuration.Validate();
 			var sqlAnalysis = new SqlAnalysis();
-			sqlAnalysis.Run(from, to, upper, lower, limit, form, connectionString);
+			sqlAnalysis.Run(configuration);
 		}
 	}
 }

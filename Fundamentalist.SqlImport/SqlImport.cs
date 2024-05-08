@@ -1,9 +1,11 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json;
 using HtmlAgilityPack;
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -17,27 +19,30 @@ namespace Fundamentalist.SqlImport
 		const string PriceTable = "price";
 		const string MarketCapTable = "market_cap";
 
-		public void Import(string xbrlDirectory, string tickerPath, string priceDataDirectory, string profileDirectory, string marketCapDirectory, string connectionString)
+		private Stopwatch _earningsStopwatch;
+		private int _progress;
+		private int _total;
+
+		public void Import(string companyFactsPath, string tickerPath, string priceDataDirectory, string profileDirectory, string marketCapDirectory, string connectionString)
 		{
-			// var xbrlParser = new XbrlParser();
-			// xbrlParser.Load(xbrlDirectory, tickerPath, priceDataDirectory);
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			using (var connection = new SqlConnection(connectionString))
 			{
 				connection.Open();
-				// ImportTickers(xbrlParser.Tickers, connection);
+				var tickers = DataReader.GetTickersFromJson(tickerPath);
+				// ImportTickers(tickers, connection);
 				// ImportProfileData(profileDirectory, connection);
-				ImportMarketCapData(marketCapDirectory, connection);
-				// ImportEarnings(xbrlParser.Earnings, connection);
-				// ImportPriceData(xbrlParser.Tickers, priceDataDirectory, connection);
+				// ImportMarketCapData(marketCapDirectory, connection);
+				ImportEarnings(companyFactsPath, connection);
+				// ImportPriceData(tickers, priceDataDirectory, connection);
 				// ImportIndexPriceData(priceDataDirectory, connection);
 			}
 			stopwatch.Stop();
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
-		private void ImportTickers(IEnumerable<Ticker> tickers, SqlConnection connection)
+		private void ImportTickers(List<Ticker> tickers, SqlConnection connection)
 		{
 			Console.WriteLine("Importing tickers");
 			TruncateTable(TickerTable, connection);
@@ -47,16 +52,18 @@ namespace Fundamentalist.SqlImport
 				new DataColumn("symbol", typeof(string)),
 				new DataColumn("cik", typeof(int)),
 				new DataColumn("company", typeof(string)),
+				new DataColumn("sector", typeof(string)),
+				new DataColumn("industry", typeof(string)),
 				new DataColumn("exclude", typeof(bool))
 			});
 			var usedCiks = new HashSet<int>();
 			var permittedSuffixes = new Regex("-(A|B|C|PA|PB|PC)$");
 			var bannedTitlePattern = new Regex(" ETF| Fund|S&P 500");
-			foreach (var ticker in tickers)
+			foreach (var ticker in tickers.Take(1))
 			{
 				bool usedCik = usedCiks.Contains(ticker.Cik);
 				bool exclude = usedCik || (ticker.Symbol.Contains("-") && !permittedSuffixes.IsMatch(ticker.Symbol)) || bannedTitlePattern.IsMatch(ticker.Title);
-				table.Rows.Add(ticker.Symbol, ticker.Cik, ticker.Title, exclude);
+				table.Rows.Add(ticker.Symbol, ticker.Cik, ticker.Title, DBNull.Value, DBNull.Value, exclude);
 				if (!usedCik)
 					usedCiks.Add(ticker.Cik);
 			}
@@ -73,13 +80,13 @@ namespace Fundamentalist.SqlImport
 			foreach (string file in files)
 			{
 				string symbol = Path.GetFileNameWithoutExtension(file);
-				Console.WriteLine($"Setting industry and sector of {symbol}");
+				// Console.WriteLine($"Setting industry and sector of {symbol}");
 				var document = new HtmlDocument();
 				document.Load(file);
 				var nodes = document.DocumentNode.SelectNodes("//div[@class='json_box']/div[2]/div/span");
 				if (nodes == null || nodes.Count < 19)
 				{
-					Utility.WriteError($"Unable to determine industry and sector of {symbol}");
+					// Utility.WriteError($"Unable to determine industry and sector of {symbol}");
 					continue;
 				}
 				var getText = (int i) =>
@@ -133,7 +140,7 @@ namespace Fundamentalist.SqlImport
 
 		private void ImportMarketCapSamples(string symbol, MarketCapSample[] samples, SqlConnection connection)
 		{
-			Console.WriteLine($"Importing market cap data for {symbol}");
+			// Console.WriteLine($"Importing market cap data for {symbol}");
 			using (var bulkCopy = GetBulkCopy(connection))
 			{
 				var table = new DataTable(MarketCapTable);
@@ -153,22 +160,69 @@ namespace Fundamentalist.SqlImport
 			}
 		}
 
-		private void ImportEarnings(IEnumerable<CompanyEarnings> companyEarnings, SqlConnection connection)
+		private void ImportEarnings(string companyFactsPath, SqlConnection connection)
 		{
 			Console.WriteLine("Importing earnings reports");
 			TruncateTable(FactTable, connection);
-			int i = 1;
-			int count = companyEarnings.Count();
-			foreach (var earnings in companyEarnings.OrderBy(x => x.Ticker.Symbol))
+			var allCompanyFacts = new ConcurrentBag<CompanyFacts>();
+			_progress = 0;
+			using (var zipFile = ZipFile.OpenRead(companyFactsPath))
 			{
-				var ticker = earnings.Ticker;
-				int cik = earnings.Ticker.Cik;
-				PrintProgress(i, count, ticker);
-				using (var bulkCopy = GetBulkCopy(connection))
+				_total = zipFile.Entries.Count;
+			}
+			var threads = new List<Thread>();
+			int threadCount = 4;
+			_earningsStopwatch = new Stopwatch();
+			_earningsStopwatch.Start();
+			for (int i = 0; i < threadCount; i++)
+			{
+				int threadId = i;
+				var thread = new Thread(() => RunEarningsThread(companyFactsPath, threadId, threadCount, connection, allCompanyFacts));
+				thread.Start();
+				threads.Add(thread);
+			}
+			foreach (var thread in threads)
+				thread.Join();
+			ImportCompanyFacts(allCompanyFacts, connection);
+		}
+
+		private void RunEarningsThread(string companyFactsPath, int threadId, int threadCount, SqlConnection connection, ConcurrentBag<CompanyFacts> allCompanyFacts)
+		{
+			using (var zipFile = ZipFile.OpenRead(companyFactsPath))
+			{
+				int entryOffset = 0;
+				foreach (var entry in zipFile.Entries)
 				{
-					var table = new DataTable(FactTable);
-					table.Columns.AddRange(new DataColumn[]
+					if (entryOffset % threadCount == threadId)
 					{
+						int progress = Interlocked.Increment(ref _progress);
+						Console.WriteLine($"Processing {entry.Name} on thread #{threadId + 1} ({progress}/{_total}, {progress / _earningsStopwatch.Elapsed.TotalSeconds:F2}/s)");
+						using (var stream = entry.Open())
+						{
+							using (var streamReader = new StreamReader(stream))
+							{
+								string json = streamReader.ReadToEnd();
+								var options = new JsonSerializerOptions
+								{
+									PropertyNameCaseInsensitive = true
+								};
+								var companyFacts = JsonSerializer.Deserialize<CompanyFacts>(json, options);
+								allCompanyFacts.Add(companyFacts);
+							}
+						}
+					}
+					entryOffset++;
+				}
+			}
+		}
+
+		private void ImportCompanyFacts(ConcurrentBag<CompanyFacts> allCompanyFacts, SqlConnection connection)
+		{
+			using (var bulkCopy = GetBulkCopy(connection))
+			{
+				var table = new DataTable(FactTable);
+				table.Columns.AddRange(new DataColumn[]
+				{
 						new DataColumn("cik", typeof(int)),
 						new DataColumn("name", typeof(string)),
 						new DataColumn("end_date", typeof(DateTime)),
@@ -178,30 +232,36 @@ namespace Fundamentalist.SqlImport
 						new DataColumn("form", typeof(string)),
 						new DataColumn("filed", typeof(DateTime)),
 						new DataColumn("frame", typeof(string)),
-					});
-					foreach (var fact in earnings.Facts.Values)
+				});
+				foreach (var companyFacts in allCompanyFacts)
+				{
+					foreach (var fact in companyFacts.Facts)
 					{
-						foreach (var pair in fact)
+						foreach (var pair in fact.Value)
 						{
 							string factName = pair.Key;
-							var factValues = pair.Value;
-							table.Rows.Add(
-								earnings.Ticker.Cik,
-								factName,
-								factValues.End,
-								factValues.Value,
-								factValues.FiscalYear,
-								factValues.FiscalPeriod,
-								factValues.Form,
-								factValues.Filed,
-								factValues.Frame
-							);
+							foreach (var unitFactValues in pair.Value.Units.Values)
+							{
+								foreach (var factValues in unitFactValues)
+								{
+									table.Rows.Add(
+										companyFacts.Cik,
+										factName,
+										factValues.End,
+										factValues.Value,
+										factValues.FiscalYear,
+										factValues.FiscalPeriod,
+										factValues.Form,
+										factValues.Filed,
+										factValues.Frame
+									);
+								}
+							}
 						}
 					}
-					bulkCopy.DestinationTableName = FactTable;
-					bulkCopy.WriteToServer(table);
 				}
-				i++;
+				bulkCopy.DestinationTableName = FactTable;
+				bulkCopy.WriteToServer(table);
 			}
 		}
 
@@ -279,7 +339,10 @@ namespace Fundamentalist.SqlImport
 		private void TruncateTable(string table, SqlConnection connection)
 		{
 			using (var command = new SqlCommand($"delete from {table}", connection))
+			{
+				command.CommandTimeout = 60 * 60;
 				command.ExecuteNonQuery();
+			}
 		}
 
 		private SqlBulkCopy GetBulkCopy(SqlConnection connection)

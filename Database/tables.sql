@@ -4,6 +4,9 @@ if object_id('price') is not null
 if object_id('fact') is not null
 	drop table fact
 
+if object_id('market_cap') is not null
+	drop table market_cap
+
 if object_id('ticker') is not null
 	drop table ticker
 
@@ -24,7 +27,7 @@ create table fact
 	cik int not null,
 	name varchar(300) not null,
 	end_date date not null,
-	value decimal(28) not null,
+	value decimal(38, 9) not null,
 	fiscal_year int,
 	fiscal_period char(2),
 	form varchar(7) not null,
@@ -39,7 +42,7 @@ create index fact_cik_form_filed_index on fact (cik, form, filed)
 
 create table price
 (
-	symbol varchar(10) references ticker (symbol) not null,
+	symbol varchar(10) references ticker (symbol),
 	date date not null,
 	open_price money not null,
 	high money not null,

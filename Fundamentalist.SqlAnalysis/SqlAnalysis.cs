@@ -2,33 +2,37 @@
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Fundamentalist.SqlAnalysis
 {
 	internal class SqlAnalysis
 	{
 		private const int MinimumDays = 20;
-		private const decimal MinimumFrequency = 0.01m;
 
-		public void Run(DateTime from, DateTime to, decimal upper, decimal lower, int limit, string form, string connectionString)
+		private Configuration _configuration;
+
+		public void Run(Configuration configuration)
 		{
-			using (var connection = new SqlConnection(connectionString))
+			_configuration = configuration;
+			Console.WriteLine("Loading SEC filings and price data from database");
+			var stopwatch = new Stopwatch();
+			stopwatch.Start();
+			DataTable factsTable, indexTable, priceTable;
+			using (var connection = new SqlConnection(_configuration.ConnectionString))
 			{
-				Console.WriteLine("Loading SEC filings and price data from database");
-				var stopwatch = new Stopwatch();
-				stopwatch.Start();
 				connection.Open();
-				var factsTable = GetFactsTable(from, to, form, connection);
-				var indexTable = GetIndexTable(from, to, limit, connection);
-				var priceTable = GetPriceTable(from, to, limit, form, connection);
-				stopwatch.Stop();
-				Console.WriteLine($"Finished loading data in {stopwatch.Elapsed.TotalSeconds:F1} s");
-				var performanceData = CalculatePerformance(upper, lower, limit, indexTable, priceTable);
-				EvaluateFacts(factsTable, performanceData);
+				factsTable = GetFactsTable(connection);
+				indexTable = GetIndexTable(connection);
+				priceTable = GetPriceTable(connection);
 			}
+			stopwatch.Stop();
+			Console.WriteLine($"Finished loading data in {stopwatch.Elapsed.TotalSeconds:F1} s");
+			var performanceData = CalculatePerformance(indexTable, priceTable);
+			EvaluateFacts(factsTable, performanceData);
 		}
 
-		private DataTable GetFactsTable(DateTime from, DateTime to, string form, SqlConnection connection)
+		private DataTable GetFactsTable(SqlConnection connection)
 		{
 			string query = @"
 				select
@@ -47,9 +51,9 @@ namespace Fundamentalist.SqlAnalysis
 			using (var command = new SqlCommand(query, connection))
 			{
 				var parameters = command.Parameters;
-				parameters.AddWithValue("@from", from);
-				parameters.AddWithValue("@to", to);
-				parameters.AddWithValue("@form", form);
+				parameters.AddWithValue("@from", _configuration.From.Value);
+				parameters.AddWithValue("@to", _configuration.To.Value);
+				parameters.AddWithValue("@form", _configuration.Form);
 				using (var adapter = new SqlDataAdapter(command))
 				{
 					adapter.Fill(dataTable);
@@ -58,7 +62,7 @@ namespace Fundamentalist.SqlAnalysis
 			return dataTable;
 		}
 
-		private DataTable GetIndexTable(DateTime from, DateTime to, int limit, SqlConnection connection)
+		private DataTable GetIndexTable(SqlConnection connection)
 		{
 			string query = @"
 				select
@@ -75,9 +79,9 @@ namespace Fundamentalist.SqlAnalysis
 			using (var command = new SqlCommand(query, connection))
 			{
 				var parameters = command.Parameters;
-				parameters.AddWithValue("@from", from);
-				parameters.AddWithValue("@to", to);
-				parameters.AddWithValue("@limit", limit);
+				parameters.AddWithValue("@from", _configuration.From.Value);
+				parameters.AddWithValue("@to", _configuration.To.Value);
+				parameters.AddWithValue("@limit", _configuration.Limit.Value);
 				using (var adapter = new SqlDataAdapter(command))
 				{
 					adapter.Fill(dataTable);
@@ -86,7 +90,7 @@ namespace Fundamentalist.SqlAnalysis
 			return dataTable;
 		}
 
-		private DataTable GetPriceTable(DateTime from, DateTime to, int limit, string form, SqlConnection connection)
+		private DataTable GetPriceTable(SqlConnection connection)
 		{
 			string query = @"
 				select
@@ -118,10 +122,10 @@ namespace Fundamentalist.SqlAnalysis
 			using (var command = new SqlCommand(query, connection))
 			{
 				var parameters = command.Parameters;
-				parameters.AddWithValue("@from", from);
-				parameters.AddWithValue("@to", to);
-				parameters.AddWithValue("@form", form);
-				parameters.AddWithValue("@limit", limit);
+				parameters.AddWithValue("@from", _configuration.From.Value);
+				parameters.AddWithValue("@to", _configuration.To.Value);
+				parameters.AddWithValue("@form", _configuration.Form);
+				parameters.AddWithValue("@limit", _configuration.Limit.Value);
 				using (var adapter = new SqlDataAdapter(command))
 				{
 					adapter.Fill(dataTable);
@@ -130,7 +134,7 @@ namespace Fundamentalist.SqlAnalysis
 			return dataTable;
 		}
 
-		private Dictionary<PriceKey, decimal> CalculatePerformance(decimal upper, decimal lower, int limit, DataTable indexTable, DataTable priceTable)
+		private Dictionary<PriceKey, decimal> CalculatePerformance(DataTable indexTable, DataTable priceTable)
 		{
 			Console.WriteLine("Calculating performance values");
 			var stopwatch = new Stopwatch();
@@ -173,6 +177,8 @@ namespace Fundamentalist.SqlAnalysis
 					return aggregator;
 				});
 			};
+			decimal upper = _configuration.Upper.Value;
+			decimal lower = _configuration.Lower.Value;
 			Func<decimal, PriceKey, bool> boundaryCheck = (performance, priceKey) =>
 			{
 				decimal? value = null;
@@ -254,21 +260,37 @@ namespace Fundamentalist.SqlAnalysis
 					return aggregator;
 				});
 			});
-			var commonFacts = facts.Where(pair => (decimal)pair.Value.Count / performanceData.Count > MinimumFrequency).ToList();
+			var commonFacts = facts.Where(pair => (decimal)pair.Value.Count / performanceData.Count > _configuration.MinimumFrequency.Value).ToList();
 			Parallel.ForEach(commonFacts, pair => pair.Value.UpdateStats());
 			stopwatch.Stop();
 			Console.WriteLine($"Finished evaluating facts in {stopwatch.Elapsed.TotalSeconds:F1} s");
-			int rank = 1;
-			foreach (var pair in commonFacts.OrderByDescending(pair => pair.Value.Mean))
+			using (var writer = new StreamWriter(_configuration.Output))
 			{
-				string fact = pair.Key;
-				var aggregator = pair.Value;
-				var frequency = (decimal)aggregator.Count / performanceData.Count;
-				if (frequency < MinimumFrequency)
-					continue;
-				Console.WriteLine($"{rank}. {fact}: μ = {aggregator.Mean:F3}, σ = {aggregator.StandardDeviation:F3} ({aggregator.Count}, {frequency:P2})");
-				rank++;
+				string json = JsonSerializer.Serialize(_configuration);
+				writer.WriteLine("Configuration used:");
+				writer.WriteLine(json);
+				writer.WriteLine(string.Empty);
+				var writeStats = (IOrderedEnumerable<KeyValuePair<string, StatsAggregator>> orderedFacts) =>
+				{
+					int rank = 1;
+					foreach (var pair in orderedFacts)
+					{
+						string fact = pair.Key;
+						var aggregator = pair.Value;
+						var frequency = (decimal)aggregator.Count / performanceData.Count;
+						if (frequency < _configuration.MinimumFrequency.Value)
+							continue;
+						writer.WriteLine($"{rank}. {fact}: μ = {aggregator.Mean:F3}, σ = {aggregator.StandardDeviation:F3} ({aggregator.Count}, {frequency:P2})");
+						rank++;
+					}
+				};
+				writer.WriteLine("Results ordered by μ:");
+				writeStats(commonFacts.OrderByDescending(pair => pair.Value.Mean));
+				writer.WriteLine(string.Empty);
+				writer.WriteLine("Results ordered by σ:");
+				writeStats(commonFacts.OrderBy(pair => pair.Value.StandardDeviation));
 			}
+			Console.WriteLine($"Wrote results to \"{_configuration.Output}\"");
 		}
 	}
 }

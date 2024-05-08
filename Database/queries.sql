@@ -34,6 +34,8 @@ if object_id('get_industry_stats') is not null
 	drop function get_industry_stats
 if object_id('get_label') is not null
 	drop function get_label
+if object_id('get_median') is not null
+	drop function get_median
 go
 
 if type_id('performance_table_type') is not null
@@ -242,6 +244,28 @@ begin
 	order by date
 
 	return @performance
+end
+go
+
+create function get_median(@name varchar(250))
+returns decimal(38, 9) as
+begin
+	declare @median decimal(38, 9);
+	with F as
+	(
+		select
+			row_number() over (order by value) as row_number,
+			value
+		from fact
+		where name = @name
+	)
+	select
+		@median = avg(value)
+	from F
+	where
+		row_number = (select count(*) from F) / 2 + 1
+		or ((select count(*) from F) % 2 = 0 and row_number = (select count(*) from F) / 2)
+	return @median
 end
 go
 
