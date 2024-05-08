@@ -38,7 +38,8 @@ namespace Fundamentalist.SqlAnalysis
 				select
 					symbol,
 					filed,
-					name
+					name,
+					unit
 				from
 					fact join ticker
 					on fact.cik = ticker.cik
@@ -245,11 +246,15 @@ namespace Fundamentalist.SqlAnalysis
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			var facts = new ConcurrentDictionary<string, StatsAggregator>();
+			var units = new ConcurrentDictionary<string, string>();
 			Parallel.ForEach(factsTable.AsEnumerable(), row =>
 			{
 				string symbol = row.Field<string>("symbol");
 				DateTime filed = row.Field<DateTime>("filed");
 				string fact = row.Field<string>("name");
+				string unit = row.Field<string>("unit");
+				if (!units.ContainsKey(fact))
+					units[fact] = unit;
 				var priceKey = new PriceKey(symbol, filed);
 				decimal performance;
 				if (!performanceData.TryGetValue(priceKey, out performance))
@@ -280,7 +285,8 @@ namespace Fundamentalist.SqlAnalysis
 						var frequency = (decimal)aggregator.Count / performanceData.Count;
 						if (frequency < _configuration.MinimumFrequency.Value)
 							continue;
-						writer.WriteLine($"{rank}. {fact}: μ = {aggregator.Mean:F3}, σ = {aggregator.StandardDeviation:F3} ({aggregator.Count}, {frequency:P2})");
+						string unit = units[fact];
+						writer.WriteLine($"{rank}. {fact} ({unit}): μ = {aggregator.Mean:F3}, σ = {aggregator.StandardDeviation:F3} ({aggregator.Count}, {frequency:P2})");
 						rank++;
 					}
 				};

@@ -1,15 +1,12 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json;
 using HtmlAgilityPack;
-using System;
-using System.Collections.Concurrent;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Web;
 
 namespace Fundamentalist.SqlImport
@@ -29,13 +26,12 @@ namespace Fundamentalist.SqlImport
 			{
 				connection.Open();
 				var tickers = DataReader.GetTickersFromJson(tickerPath);
-				// ImportTickers(tickers, connection);
+				ImportTickers(tickers, connection);
 				// ImportProfileData(profileDirectory, connection);
 				// ImportMarketCapData(marketCapDirectory, connection);
-				// ImportEarnings(companyFactsPath, connection);
 				// ImportPriceData(tickers, priceDataDirectory, connection);
 				// ImportIndexPriceData(priceDataDirectory, connection);
-				AddMissingUnits(companyFactsPath, connection);
+				ImportEarnings(companyFactsPath, connection);
 			}
 			stopwatch.Stop();
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -58,7 +54,7 @@ namespace Fundamentalist.SqlImport
 			var usedCiks = new HashSet<int>();
 			var permittedSuffixes = new Regex("-(A|B|C|PA|PB|PC)$");
 			var bannedTitlePattern = new Regex(" ETF| Fund|S&P 500");
-			foreach (var ticker in tickers.Take(1))
+			foreach (var ticker in tickers)
 			{
 				bool usedCik = usedCiks.Contains(ticker.Cik);
 				bool exclude = usedCik || (ticker.Symbol.Contains("-") && !permittedSuffixes.IsMatch(ticker.Symbol)) || bannedTitlePattern.IsMatch(ticker.Title);
@@ -165,15 +161,17 @@ namespace Fundamentalist.SqlImport
 			Console.WriteLine("Importing earnings reports");
 			TruncateTable(FactTable, connection);
 			var batch = new List<CompanyFacts>();
-			int progress = 0;
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
 			using (var zipFile = ZipFile.OpenRead(companyFactsPath))
 			{
-				int offset = 1;
+				int offset = 0;
 				int total = zipFile.Entries.Count;
 				foreach (var entry in zipFile.Entries)
 				{
+					offset++;
+					if (!HasPriceData(entry, connection))
+						continue;
 					using (var stream = entry.Open())
 					{
 						using (var streamReader = new StreamReader(stream))
@@ -187,17 +185,36 @@ namespace Fundamentalist.SqlImport
 							batch.Add(companyFacts);
 							if (batch.Count >= BatchSize || offset == total)
 							{
-								progress += batch.Count;
-								Console.WriteLine($"Writing batch to database ({progress}/{total}, {progress / stopwatch.Elapsed.TotalSeconds:F2}/s)");
+								Console.WriteLine($"Writing batch to database ({offset}/{total}, {offset / stopwatch.Elapsed.TotalSeconds:F2}/s)");
 								ImportCompanyFacts(batch, connection);
 								batch.Clear();
 							}
 						}
 					}
-					offset++;
 				}
 			}
 			stopwatch.Stop();
+		}
+
+		private bool HasPriceData(ZipArchiveEntry entry, SqlConnection connection)
+		{
+			var pattern = new Regex("[1-9][0-9]+");
+			var match = pattern.Match(entry.Name);
+			if (!match.Success)
+				throw new ApplicationException("Unknown pattern in file name");
+			int cik = int.Parse(match.Value);
+			string query = @"
+				select count(*)
+				from
+					ticker join price
+					on ticker.symbol = price.symbol
+				where ticker.cik = @cik";
+			using (var command = new SqlCommand(query, connection))
+			{
+				command.Parameters.AddWithValue("@cik", cik);
+				int count = (int)command.ExecuteScalar();
+				return count > 0;
+			}
 		}
 
 		private void ImportCompanyFacts(List<CompanyFacts> batch, SqlConnection connection)
@@ -282,14 +299,14 @@ namespace Fundamentalist.SqlImport
 			var table = new DataTable(PriceTable);
 			table.Columns.AddRange(new DataColumn[]
 			{
-					new DataColumn("symbol", typeof(string)),
-					new DataColumn("date", typeof(DateTime)),
-					new DataColumn("open_price", typeof(decimal)),
-					new DataColumn("high", typeof(decimal)),
-					new DataColumn("low", typeof(decimal)),
-					new DataColumn("close_price", typeof(decimal)),
-					new DataColumn("adjusted_close", typeof(decimal)),
-					new DataColumn("volume", typeof(long)),
+				new DataColumn("symbol", typeof(string)),
+				new DataColumn("date", typeof(DateTime)),
+				new DataColumn("open_price", typeof(decimal)),
+				new DataColumn("high", typeof(decimal)),
+				new DataColumn("low", typeof(decimal)),
+				new DataColumn("close_price", typeof(decimal)),
+				new DataColumn("adjusted_close", typeof(decimal)),
+				new DataColumn("volume", typeof(long)),
 			});
 			try
 			{
@@ -338,66 +355,6 @@ namespace Fundamentalist.SqlImport
 		{
 			var options = SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction;
 			return new SqlBulkCopy(connection, options, null);
-		}
-
-		private void AddMissingUnits(string companyFactsPath, SqlConnection connection)
-		{
-			Console.WriteLine("Adding missing units");
-			var stopwatch = new Stopwatch();
-			stopwatch.Start();
-			using (var zipFile = ZipFile.OpenRead(companyFactsPath))
-			{
-				int offset = 1;
-				int total = zipFile.Entries.Count;
-				foreach (var entry in zipFile.Entries)
-				{
-					using (var stream = entry.Open())
-					{
-						using (var streamReader = new StreamReader(stream))
-						{
-							string json = streamReader.ReadToEnd();
-							var options = new JsonSerializerOptions
-							{
-								PropertyNameCaseInsensitive = true
-							};
-							var companyFacts = JsonSerializer.Deserialize<CompanyFacts>(json, options);
-							AddMissingUnit(companyFacts, connection);
-						}
-					}
-					Console.WriteLine($"Added missing units ({offset}/{zipFile.Entries.Count}, {offset / stopwatch.Elapsed.TotalSeconds:F2}/s)");
-					offset++;
-				}
-			}
-			stopwatch.Stop();
-		}
-
-		private void AddMissingUnit(CompanyFacts companyFacts, SqlConnection connection)
-		{
-			if (companyFacts.Cik == 0 || companyFacts.Facts == null)
-				return;
-			foreach (var fact in companyFacts.Facts)
-			{
-				foreach (var pair in fact.Value)
-				{
-					string factName = pair.Key;
-					foreach (var unitPair in pair.Value.Units)
-					{
-						foreach (var factValues in unitPair.Value)
-						{
-							string query = "update fact set unit = @unit where cik = @cik and filed = @filed and name = @name";
-							using (var command = new SqlCommand(query, connection))
-							{
-								var parameters = command.Parameters;
-								parameters.AddWithValue("@unit", unitPair.Key);
-								parameters.AddWithValue("@cik", companyFacts.Cik);
-								parameters.AddWithValue("@filed", factValues.Filed);
-								parameters.AddWithValue("@name", factName);
-								command.ExecuteNonQuery();
-							}
-						}
-					}
-				}
-			}
 		}
 	}
 }
