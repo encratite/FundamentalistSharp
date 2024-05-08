@@ -32,9 +32,10 @@ namespace Fundamentalist.SqlImport
 				// ImportTickers(tickers, connection);
 				// ImportProfileData(profileDirectory, connection);
 				// ImportMarketCapData(marketCapDirectory, connection);
-				ImportEarnings(companyFactsPath, connection);
+				// ImportEarnings(companyFactsPath, connection);
 				// ImportPriceData(tickers, priceDataDirectory, connection);
 				// ImportIndexPriceData(priceDataDirectory, connection);
+				AddMissingUnits(companyFactsPath, connection);
 			}
 			stopwatch.Stop();
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
@@ -173,7 +174,6 @@ namespace Fundamentalist.SqlImport
 				int total = zipFile.Entries.Count;
 				foreach (var entry in zipFile.Entries)
 				{
-
 					using (var stream = entry.Open())
 					{
 						using (var streamReader = new StreamReader(stream))
@@ -209,6 +209,7 @@ namespace Fundamentalist.SqlImport
 				{
 						new DataColumn("cik", typeof(int)),
 						new DataColumn("name", typeof(string)),
+						new DataColumn("unit", typeof(string)),
 						new DataColumn("end_date", typeof(DateTime)),
 						new DataColumn("value", typeof(decimal)),
 						new DataColumn("fiscal_year", typeof(int)),
@@ -226,13 +227,14 @@ namespace Fundamentalist.SqlImport
 						foreach (var pair in fact.Value)
 						{
 							string factName = pair.Key;
-							foreach (var unitFactValues in pair.Value.Units.Values)
+							foreach (var unitPair in pair.Value.Units)
 							{
-								foreach (var factValues in unitFactValues)
+								foreach (var factValues in unitPair.Value)
 								{
 									table.Rows.Add(
 										companyFacts.Cik,
 										factName,
+										unitPair.Key,
 										factValues.End,
 										factValues.Value,
 										factValues.FiscalYear,
@@ -336,6 +338,66 @@ namespace Fundamentalist.SqlImport
 		{
 			var options = SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction;
 			return new SqlBulkCopy(connection, options, null);
+		}
+
+		private void AddMissingUnits(string companyFactsPath, SqlConnection connection)
+		{
+			Console.WriteLine("Adding missing units");
+			var stopwatch = new Stopwatch();
+			stopwatch.Start();
+			using (var zipFile = ZipFile.OpenRead(companyFactsPath))
+			{
+				int offset = 1;
+				int total = zipFile.Entries.Count;
+				foreach (var entry in zipFile.Entries)
+				{
+					using (var stream = entry.Open())
+					{
+						using (var streamReader = new StreamReader(stream))
+						{
+							string json = streamReader.ReadToEnd();
+							var options = new JsonSerializerOptions
+							{
+								PropertyNameCaseInsensitive = true
+							};
+							var companyFacts = JsonSerializer.Deserialize<CompanyFacts>(json, options);
+							AddMissingUnit(companyFacts, connection);
+						}
+					}
+					Console.WriteLine($"Added missing units ({offset}/{zipFile.Entries.Count}, {offset / stopwatch.Elapsed.TotalSeconds:F2}/s)");
+					offset++;
+				}
+			}
+			stopwatch.Stop();
+		}
+
+		private void AddMissingUnit(CompanyFacts companyFacts, SqlConnection connection)
+		{
+			if (companyFacts.Cik == 0 || companyFacts.Facts == null)
+				return;
+			foreach (var fact in companyFacts.Facts)
+			{
+				foreach (var pair in fact.Value)
+				{
+					string factName = pair.Key;
+					foreach (var unitPair in pair.Value.Units)
+					{
+						foreach (var factValues in unitPair.Value)
+						{
+							string query = "update fact set unit = @unit where cik = @cik and filed = @filed and name = @name";
+							using (var command = new SqlCommand(query, connection))
+							{
+								var parameters = command.Parameters;
+								parameters.AddWithValue("@unit", unitPair.Key);
+								parameters.AddWithValue("@cik", companyFacts.Cik);
+								parameters.AddWithValue("@filed", factValues.Filed);
+								parameters.AddWithValue("@name", factName);
+								command.ExecuteNonQuery();
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }
