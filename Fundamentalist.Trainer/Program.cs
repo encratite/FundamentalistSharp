@@ -44,8 +44,8 @@ namespace Fundamentalist.Trainer
 				{
 					DaysSinceEarnings = 6,
 					ForecastDays = 60,
-					TrainingDate = new DateTime(2018, 1, 1),
-					TestDate = new DateTime(2023, 1, 1),
+					TrainingDate = new DateOnly(2018, 1, 1),
+					TestDate = new DateOnly(2023, 1, 1),
 					OutperformLimit = 0.06m,
 					UnderperformLimit = -0.06m,
 					CommonFeatures = features,

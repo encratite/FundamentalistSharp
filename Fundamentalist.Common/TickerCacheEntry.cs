@@ -2,8 +2,8 @@
 {
 	public class TickerCacheEntry
 	{
-		public Dictionary<DateTime, float[]> Earnings { get; set; } = new Dictionary<DateTime, float[]>();
-		public SortedList<DateTime, PriceData> PriceData { get; set; } = new SortedList<DateTime, PriceData>();
+		public Dictionary<DateOnly, float[]> Earnings { get; set; } = new Dictionary<DateOnly, float[]>();
+		public SortedList<DateOnly, PriceData> PriceData { get; set; } = new SortedList<DateOnly, PriceData>();
 		public int? Index { get; set; }
 	}
 }

@@ -27,8 +27,8 @@ namespace Fundamentalist.Correlation
 			string weekdayOutput = arguments[10];
 
 			int minimumCount = 1000;
-			DateTime fromDate = new DateTime(2009, 1, 1);
-			DateTime toDate = new DateTime(2011, 1, 1);
+			DateOnly fromDate = new DateOnly(2009, 1, 1);
+			DateOnly toDate = new DateOnly(2011, 1, 1);
 			string logDirectory = null;
 
 			var analyzer = new CorrelationAnalyzer(

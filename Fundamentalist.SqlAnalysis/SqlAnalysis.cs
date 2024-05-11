@@ -8,8 +8,6 @@ namespace Fundamentalist.SqlAnalysis
 {
 	internal class SqlAnalysis
 	{
-		private const int MinimumDays = 20;
-
 		private Configuration _configuration;
 
 		public void Run(Configuration configuration)
@@ -18,17 +16,14 @@ namespace Fundamentalist.SqlAnalysis
 			Console.WriteLine("Loading SEC filings and price data from database");
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			DataTable factsTable, indexTable, priceTable;
+			DataTable factsTable;
 			using (var connection = new SqlConnection(_configuration.ConnectionString))
 			{
 				connection.Open();
 				factsTable = GetFactsTable(connection);
-				indexTable = GetIndexTable(connection);
-				priceTable = GetPriceTable(connection);
 			}
 			stopwatch.Stop();
 			Console.WriteLine($"Finished loading data in {stopwatch.Elapsed.TotalSeconds:F1} s");
-			var performanceData = CalculatePerformance(indexTable, priceTable);
 			EvaluateFacts(factsTable, performanceData);
 		}
 
@@ -61,171 +56,6 @@ namespace Fundamentalist.SqlAnalysis
 				}
 			}
 			return dataTable;
-		}
-
-		private DataTable GetIndexTable(SqlConnection connection)
-		{
-			string query = @"
-				select
-					date,
-					open_price,
-					close_price
-				from price
-				where
-					symbol is null
-					and date >= @from
-					and date <= dateadd(day, @limit, @from)
-				order by date";
-			var dataTable = new DataTable();
-			using (var command = new SqlCommand(query, connection))
-			{
-				var parameters = command.Parameters;
-				parameters.AddWithValue("@from", _configuration.From.Value);
-				parameters.AddWithValue("@to", _configuration.To.Value);
-				parameters.AddWithValue("@limit", _configuration.Limit.Value);
-				using (var adapter = new SqlDataAdapter(command))
-				{
-					adapter.Fill(dataTable);
-				}
-			}
-			return dataTable;
-		}
-
-		private DataTable GetPriceTable(SqlConnection connection)
-		{
-			string query = @"
-				select
-					S.symbol,
-					filed,
-					date,
-					open_price,
-					close_price
-				from
-				(
-					select distinct
-						symbol,
-						filed
-					from
-						fact join ticker
-						on fact.cik = ticker.cik
-					where
-						fact.filed >= @from
-						and fact.filed < @to
-						and fact.form = @form
-						and ticker.exclude = 0
-				) as S join price
-				on S.symbol = price.symbol
-				where
-					price.date >= @from
-					and price.date <= dateadd(day, @limit, @from)
-				order by S.symbol, filed, date";
-			var dataTable = new DataTable();
-			using (var command = new SqlCommand(query, connection))
-			{
-				var parameters = command.Parameters;
-				parameters.AddWithValue("@from", _configuration.From.Value);
-				parameters.AddWithValue("@to", _configuration.To.Value);
-				parameters.AddWithValue("@form", _configuration.Form);
-				parameters.AddWithValue("@limit", _configuration.Limit.Value);
-				using (var adapter = new SqlDataAdapter(command))
-				{
-					adapter.Fill(dataTable);
-				}
-			}
-			return dataTable;
-		}
-
-		private Dictionary<PriceKey, decimal> CalculatePerformance(DataTable indexTable, DataTable priceTable)
-		{
-			Console.WriteLine("Calculating performance values");
-			var stopwatch = new Stopwatch();
-			stopwatch.Start();
-			var indexPrices = new Dictionary<DateTime, OpenClosePrice>();
-			foreach (DataRow row in indexTable.Rows)
-			{
-				DateTime date = row.Field<DateTime>("date");
-				decimal open = row.Field<decimal>("open_price");
-				decimal close = row.Field<decimal>("close_price");
-				var openClosePrice = new OpenClosePrice(open, close);
-				indexPrices[date] = openClosePrice;
-			}
-			var performanceValues = new ConcurrentDictionary<PriceKey, StatsAggregator>();
-			PriceKey priceKey = null;
-			int offset = 0;
-			var symbolRows = new List<RowRange>();
-			for (int i = 0; i < priceTable.Rows.Count; i++)
-			{
-				var row = priceTable.Rows[i];
-				string symbol = row.Field<string>("symbol");
-				DateTime filed = row.Field<DateTime>("filed");
-				var currentPriceKey = new PriceKey(symbol, filed);
-				if (!currentPriceKey.Equals(priceKey))
-				{
-					if (priceKey != null && i - offset >= MinimumDays)
-					{
-						var rowRange = new RowRange(priceKey, offset, i);
-						symbolRows.Add(rowRange);
-					}
-					priceKey = currentPriceKey;
-					offset = i;
-				}
-			}
-			Action<decimal, PriceKey> aggregatePerformance = (value, priceKey) =>
-			{
-				performanceValues.AddOrUpdate(priceKey, new StatsAggregator(value), (priceKey, aggregator) =>
-				{
-					aggregator.Add(value);
-					return aggregator;
-				});
-			};
-			decimal upper = _configuration.Upper.Value;
-			decimal lower = _configuration.Lower.Value;
-			Func<decimal, PriceKey, bool> boundaryCheck = (performance, priceKey) =>
-			{
-				decimal? value = null;
-				if (performance > upper)
-					value = upper;
-				else if (performance < lower)
-					value = lower;
-				if (value.HasValue)
-				{
-					aggregatePerformance(value.Value, priceKey);
-					return true;
-				}
-				else
-					return false;
-			};
-			Parallel.ForEach(symbolRows, rowRange =>
-			{
-				var key = rowRange.Key;
-				DateTime date;
-				decimal open, close, firstClose;
-				close = 0m;
-				var firstRow = priceTable.Rows[rowRange.Start];
-				GetDateOpenClose(firstRow, out date, out open, out firstClose);
-				var firstIndexPrice = indexPrices[date];
-				OpenClosePrice currentIndexPrice = null;
-				for (int i = rowRange.Start + 1; i < rowRange.End; i++)
-				{
-					var row = priceTable.Rows[i];
-					GetDateOpenClose(row, out date, out open, out close);
-					currentIndexPrice = indexPrices[date];
-					var openPerformance = GetPerformance(firstClose, open, firstIndexPrice.Close, currentIndexPrice.Open);
-					if (boundaryCheck(openPerformance, key))
-						return;
-					var closePerformance = GetPerformance(firstClose, close, firstIndexPrice.Close, currentIndexPrice.Close);
-					if (boundaryCheck(closePerformance, key))
-						return;
-				}
-				var finalPerformance = GetPerformance(firstClose, close, firstIndexPrice.Close, currentIndexPrice.Close);
-				aggregatePerformance(finalPerformance, key);
-			});
-			var output = new Dictionary<PriceKey, decimal>();
-			foreach (var pair in performanceValues)
-				output[pair.Key] = pair.Value.Mean;
-			stopwatch.Stop();
-			Console.WriteLine($"Finished calculating performance values in {stopwatch.Elapsed.TotalSeconds:F1} s");
-			return output;
 		}
 
 		private void GetDateOpenClose(DataRow row, out DateTime date, out decimal open, out decimal close)

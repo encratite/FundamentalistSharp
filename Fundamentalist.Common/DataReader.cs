@@ -16,14 +16,14 @@ namespace Fundamentalist.Common
 			return output;
 		}
 
-		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit = null, DateTime? from = null, DateTime? to = null, HashSet<int> featureSelection = null)
+		public static ConcurrentBag<EarningsLine> GetEarnings(string csvPath, int? featureLimit = null, DateOnly? from = null, DateOnly? to = null, HashSet<int> featureSelection = null)
 		{
 			var output = new ConcurrentBag<EarningsLine>();
 			var lines = File.ReadAllLines(csvPath);
 			Parallel.ForEach(lines.Skip(1), line =>
 			{
 				var tokens = Split(line);
-				DateTime date = DateTime.Parse(tokens[1]);
+				DateOnly date = DateOnly.Parse(tokens[1]);
 				if (OutOfRange(date, from, to))
 					return;
 				var featureTokens = tokens.Skip(2);
@@ -62,7 +62,7 @@ namespace Fundamentalist.Common
 			}
 		}
 
-		public static SortedList<DateTime, PriceData> GetPriceData(string ticker, string directory, DateTime? from = null, DateTime? to = null)
+		public static SortedList<DateOnly, PriceData> GetPriceData(string ticker, string directory, DateOnly? from = null, DateOnly? to = null)
 		{
 			string csvPath = Path.Combine(directory, $"{ticker}.csv");
 			if (!File.Exists(csvPath))
@@ -70,7 +70,7 @@ namespace Fundamentalist.Common
 			var lines = File.ReadAllLines(csvPath);
 			if (lines.Length < 2)
 				return null;
-			var output = new SortedList<DateTime, PriceData>();
+			var output = new SortedList<DateOnly, PriceData>();
 			foreach (string line in lines.Skip(1))
 			{
 				var tokens = Split(line);
@@ -78,7 +78,7 @@ namespace Fundamentalist.Common
 					continue;
 				var priceData = new PriceData
 				{
-					Date = DateTime.Parse(tokens[0]),
+					Date = DateOnly.Parse(tokens[0]),
 					Open = decimal.Parse(tokens[1]),
 					High = decimal.Parse(tokens[2]),
 					Low = decimal.Parse(tokens[3]),
@@ -106,11 +106,11 @@ namespace Fundamentalist.Common
 			return tokens;
 		}
 
-		private static bool OutOfRange(DateTime date, DateTime? from, DateTime? to)
+		private static bool OutOfRange(DateOnly date, DateOnly? from, DateOnly? to)
 		{
 			return
-				(from.HasValue && date.Date < from.Value) ||
-				(to.HasValue && date.Date >= to.Value);
+				(from.HasValue && date < from.Value) ||
+				(to.HasValue && date >= to.Value);
 		}
 	}
 }

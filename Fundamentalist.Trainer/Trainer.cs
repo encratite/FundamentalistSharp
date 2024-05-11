@@ -23,7 +23,7 @@ namespace Fundamentalist.Trainer
 		private string _earningsPath;
 		private string _priceDataDirectory;
 
-		private SortedList<DateTime, PriceData> _indexPriceData = null;
+		private SortedList<DateOnly, PriceData> _indexPriceData = null;
 		private DatasetLoader _datasetLoader = new DatasetLoader();
 		private Dictionary<string, TickerCacheEntry> _tickerCache;
 
@@ -62,7 +62,7 @@ namespace Fundamentalist.Trainer
 			FreeData();
 		}
 
-		public static decimal? GetOpenPrice(DateTime date, SortedList<DateTime, PriceData> priceData)
+		public static decimal? GetOpenPrice(DateOnly date, SortedList<DateOnly, PriceData> priceData)
 		{
 			PriceData output;
 			if (priceData.TryGetValue(date, out output))
@@ -71,7 +71,7 @@ namespace Fundamentalist.Trainer
 				return null;
 		}
 
-		public static decimal? GetClosePrice(DateTime date, SortedList<DateTime, PriceData> priceData)
+		public static decimal? GetClosePrice(DateOnly date, SortedList<DateOnly, PriceData> priceData)
 		{
 			PriceData output;
 			if (priceData.TryGetValue(date, out output))
@@ -163,14 +163,14 @@ namespace Fundamentalist.Trainer
 			return (decimal)count / dataPoints.Count;
 		}
 
-		private bool InRange(DateTime? date, DateTime? from, DateTime? to)
+		private bool InRange(DateOnly? date, DateOnly? from, DateOnly? to)
 		{
 			return
 				(!from.HasValue || date.Value >= from.Value) &&
 				(!to.HasValue || date.Value < to.Value);
 		}
 
-		private void GenerateDataPointsFromEarnings(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints, EarningsFeatureMode mode)
+		private void GenerateDataPointsFromEarnings(string ticker, TickerCacheEntry tickerCacheEntry, DateOnly? from, DateOnly? to, List<DataPoint> dataPoints, EarningsFeatureMode mode)
 		{
 			var earnings = tickerCacheEntry.Earnings.Where(x => InRange(x.Key, from, to) && x.Key >= _options.TrainingDate).ToList();
 			var priceData = tickerCacheEntry.PriceData;
@@ -180,10 +180,10 @@ namespace Fundamentalist.Trainer
 			foreach (var currentEarnings in earnings)
 			{
 				var earningsFeatures = currentEarnings.Value;
-				DateTime currentDate = currentEarnings.Key + TimeSpan.FromDays(_options.DaysSinceEarnings);
+				DateOnly currentDate = currentEarnings.Key.AddDays(_options.DaysSinceEarnings);
 				while (currentDate.DayOfWeek != DayOfWeek.Monday)
-					currentDate += TimeSpan.FromDays(1);
-				DateTime futureDate = GetNextWorkingDay(currentDate + TimeSpan.FromDays(_options.ForecastDays));
+					currentDate = currentDate.AddDays(1);
+				DateOnly futureDate = GetNextWorkingDay(currentDate.AddDays(_options.ForecastDays));
 				decimal? performance = GetPerformanceRelativeToMarket(priceData, currentDate, futureDate);
 				if (!performance.HasValue)
 					continue;
@@ -219,7 +219,7 @@ namespace Fundamentalist.Trainer
 			return label;
 		}
 
-		private void GenerateDataPointsFromPriceData(string ticker, TickerCacheEntry tickerCacheEntry, DateTime? from, DateTime? to, List<DataPoint> dataPoints)
+		private void GenerateDataPointsFromPriceData(string ticker, TickerCacheEntry tickerCacheEntry, DateOnly? from, DateOnly? to, List<DataPoint> dataPoints)
 		{
 			var priceData = tickerCacheEntry.PriceData;
 			if (priceData == null)
@@ -230,7 +230,7 @@ namespace Fundamentalist.Trainer
 				var currentDate = pair.Key;
 				if (currentDate.DayOfWeek != DayOfWeek.Monday)
 					continue;
-				DateTime futureDate = GetNextWorkingDay(currentDate + TimeSpan.FromDays(_options.ForecastDays));
+				DateOnly futureDate = GetNextWorkingDay(currentDate.AddDays(_options.ForecastDays));
 				if (!InRange(currentDate, from, to))
 					continue;
 				if (pair.Value.Open < _options.MinimumPrice)
@@ -274,7 +274,7 @@ namespace Fundamentalist.Trainer
 			}
 		}
 
-		private decimal? GetPerformanceRelativeToMarket(SortedList<DateTime, PriceData> priceData, DateTime currentDate, DateTime futureDate)
+		private decimal? GetPerformanceRelativeToMarket(SortedList<DateOnly, PriceData> priceData, DateOnly currentDate, DateOnly futureDate)
 		{
 			decimal? currentPrice = GetOpenPrice(currentDate, priceData);
 			if (!currentPrice.HasValue)
@@ -312,17 +312,17 @@ namespace Fundamentalist.Trainer
 			return features;
 		}
 
-		private bool IsWorkingDay(DateTime date)
+		private bool IsWorkingDay(DateOnly date)
 		{
 			return
 				date.DayOfWeek != DayOfWeek.Saturday &&
 				date.DayOfWeek != DayOfWeek.Sunday;
 		}
 
-		private DateTime GetNextWorkingDay(DateTime date)
+		private DateOnly GetNextWorkingDay(DateOnly date)
 		{
 			while (!IsWorkingDay(date))
-				date += TimeSpan.FromDays(1);
+				date = date.AddDays(1);
 			return date;
 		}
 

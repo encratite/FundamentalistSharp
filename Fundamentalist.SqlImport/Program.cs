@@ -1,6 +1,6 @@
 ﻿using System.Reflection;
 
-namespace Fundamentalist.SqlImport
+namespace Fundamentalist.CsvGenerator
 {
 	internal class Program
 	{
@@ -11,7 +11,7 @@ namespace Fundamentalist.SqlImport
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
-				Console.WriteLine($"{name.Name} <path to companyfacts.zip> <price data directory> <path to company tickers> <profile data directory> <market cap directory> <SQL Server connection string>");
+				Console.WriteLine($"{name.Name} <path to companyfacts.zip> <price data directory> <path to company tickers> <profile data directory> <market cap directory> <CSV output directory>");
 				return;
 			}
 			string companyFactsPath = arguments[0];
@@ -19,9 +19,9 @@ namespace Fundamentalist.SqlImport
 			string priceDataDirectory = arguments[2];
 			string profileDirectory = arguments[3];
 			string marketCapDirectory = arguments[4];
-			string connectionString = arguments[5];
-			var sqlImport = new SqlImport();
-			sqlImport.Import(companyFactsPath, tickerPath, priceDataDirectory, profileDirectory, marketCapDirectory, connectionString);
+			string csvOutputDirectory = arguments[5];
+			var generator = new CsvGenerator();
+			generator.WriteCsvFiles(companyFactsPath, tickerPath, priceDataDirectory, profileDirectory, marketCapDirectory, csvOutputDirectory);
 		}
 	}
 }

@@ -4,8 +4,8 @@ namespace Fundamentalist.Common.Json
 {
 	public class FactValues
 	{
-		public DateTime Start { get; set; }
-		public DateTime End { get; set; }
+		public DateOnly Start { get; set; }
+		public DateOnly End { get; set; }
 		[JsonPropertyName("val")]
 		public decimal Value { get; set; }
 		[JsonPropertyName("accn")]
@@ -15,7 +15,7 @@ namespace Fundamentalist.Common.Json
 		[JsonPropertyName("fp")]
 		public string FiscalPeriod { get; set; }
 		public string Form { get; set; }
-		public DateTime Filed { get; set; }
+		public DateOnly Filed { get; set; }
 		public string Frame { get; set; }
 
 		public override string ToString()

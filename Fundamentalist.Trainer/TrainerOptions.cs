@@ -5,8 +5,8 @@
 		public int DaysSinceEarnings { get; set; }
 		public int ForecastDays { get; set; }
 
-		public DateTime TrainingDate { get; set; }
-		public DateTime TestDate { get; set; }
+		public DateOnly TrainingDate { get; set; }
+		public DateOnly TestDate { get; set; }
 
 		public decimal OutperformLimit { get; set; }
 		public decimal UnderperformLimit { get; set; }
@@ -26,8 +26,8 @@
 			Console.WriteLine($"  DaysSinceEarnings: {DaysSinceEarnings}");
 			Console.WriteLine($"  ForecastDays: {ForecastDays}");
 
-			Console.WriteLine($"  TrainingDate: {TrainingDate.ToShortDateString()}");
-			Console.WriteLine($"  TestDate: {TestDate.ToShortDateString()}");
+			Console.WriteLine($"  TrainingDate: {TrainingDate}");
+			Console.WriteLine($"  TestDate: {TestDate}");
 
 			Console.WriteLine($"  OutperformLimit: {OutperformLimit}");
 			Console.WriteLine($"  UnderperformLimit: {UnderperformLimit}");

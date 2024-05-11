@@ -5,12 +5,12 @@ namespace Fundamentalist.LeadLag
 {
 	internal class LeadLagDetector
 	{
-		private DateTime _from;
-		private DateTime _to;
+		private DateOnly _from;
+		private DateOnly _to;
 		private int _lag;
 		private List<TickerData> _tickers = new List<TickerData>();
 
-		public LeadLagDetector(DateTime from, DateTime to, int lag)
+		public LeadLagDetector(DateOnly from, DateOnly to, int lag)
 		{
 			_from = from;
 			_to = to;
@@ -77,7 +77,7 @@ namespace Fundamentalist.LeadLag
 			}
 		}
 
-		private bool IsValidPriceData(SortedList<DateTime, PriceData> priceData)
+		private bool IsValidPriceData(SortedList<DateOnly, PriceData> priceData)
 		{
 			const decimal Limit = 10.0m;
 			const decimal MinimumVolume = 1e6m;
@@ -94,14 +94,14 @@ namespace Fundamentalist.LeadLag
 			return true;
 		}
 
-		private Observation[] GetObservations(SortedList<DateTime, PriceData> priceData1, SortedList<DateTime, PriceData> priceData2, DateTime? from, DateTime? to)
+		private Observation[] GetObservations(SortedList<DateOnly, PriceData> priceData1, SortedList<DateOnly, PriceData> priceData2, DateOnly? from, DateOnly? to)
 		{
 			var observations = new List<Observation>();
 			foreach (var pair in priceData1)
 			{
 				var date1 = pair.Key;
 				var price1 = pair.Value;
-				var date2 = date1 + TimeSpan.FromDays(_lag);
+				var date2 = date1.AddDays(_lag);
 				if (from.HasValue && (date1 < from.Value || date2 < from.Value))
 					continue;
 				if (to.HasValue && (date1 >= to.Value || date2 >= to.Value))

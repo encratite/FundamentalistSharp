@@ -5,7 +5,7 @@ namespace Fundamentalist.Common
 	public class CompanyEarnings
 	{
 		public Ticker Ticker { get; set; }
-		public Dictionary<DateTime, Dictionary<string, FactValues>> Facts { get; set; } = new Dictionary<DateTime, Dictionary<string, FactValues>>();
+		public Dictionary<DateOnly, Dictionary<string, FactValues>> Facts { get; set; } = new Dictionary<DateOnly, Dictionary<string, FactValues>>();
 
 		public CompanyEarnings(Ticker ticker)
 		{

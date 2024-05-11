@@ -7,8 +7,8 @@ namespace Fundamentalist.Correlation
 	internal class CorrelationAnalyzer
 	{
 		private int _features;
-		private DateTime _fromDate;
-		private DateTime _toDate;
+		private DateOnly _fromDate;
+		private DateOnly _toDate;
 		private int _forecastDays;
 		private int _earningsCount;
 		private int _minimumCount;
@@ -26,7 +26,7 @@ namespace Fundamentalist.Correlation
 		private DatasetLoader _datasetLoader = new DatasetLoader();
 		private Dictionary<string, TickerCacheEntry> _cache;
 		private List<string> _featureNames;
-		private SortedList<DateTime, PriceData> _indexData;
+		private SortedList<DateOnly, PriceData> _indexData;
 		private FeatureStats[] _stats;
 		private List<FeatureCountSample> _featureCounts = new List<FeatureCountSample>();
 		private ConcurrentDictionary<DayOfWeek, List<float>> _weekdayPerformance = new ConcurrentDictionary<DayOfWeek, List<float>>();
@@ -37,8 +37,8 @@ namespace Fundamentalist.Correlation
 			string priceDataDirectory,
 			int features,
 			int minimumCount,
-			DateTime fromDate,
-			DateTime toDate,
+			DateOnly fromDate,
+			DateOnly toDate,
 			int forecastDays,
 			string nominalCorrelationOutput,
 			string relativeCorrelationOutput,
@@ -147,7 +147,7 @@ namespace Fundamentalist.Correlation
 			return (decimal)values.Sum() / values.Count;
 		}
 
-		private static decimal? GetLastPrice(DateTime now, SortedList<DateTime, PriceData> priceData)
+		private static decimal? GetLastPrice(DateOnly now, SortedList<DateOnly, PriceData> priceData)
 		{
 			var prices = priceData.Where(p => p.Key <= now).ToList();
 			decimal price = prices
@@ -157,7 +157,7 @@ namespace Fundamentalist.Correlation
 			return price;
 		}
 
-		private static PriceData GetLastPriceData(DateTime now, SortedList<DateTime, PriceData> priceData)
+		private static PriceData GetLastPriceData(DateOnly now, SortedList<DateOnly, PriceData> priceData)
 		{
 			var prices = priceData.Where(p => p.Key <= now).ToList();
 			PriceData price = prices
@@ -167,7 +167,7 @@ namespace Fundamentalist.Correlation
 			return price;
 		}
 
-		private static decimal? GetFuturePrice(DateTime now, int forecastDays, SortedList<DateTime, PriceData> priceData)
+		private static decimal? GetFuturePrice(DateOnly now, int forecastDays, SortedList<DateOnly, PriceData> priceData)
 		{
 			var prices = priceData.Where(p => p.Key > now).ToList();
 			if (prices.Count < forecastDays)
@@ -295,7 +295,7 @@ namespace Fundamentalist.Correlation
 			}
 		}
 
-		private void AddEarningsDayPerformance(DateTime now, float adjustedChange)
+		private void AddEarningsDayPerformance(DateOnly now, float adjustedChange)
 		{
 			DayOfWeek key = now.DayOfWeek;
 			if (!_weekdayPerformance.ContainsKey(key))

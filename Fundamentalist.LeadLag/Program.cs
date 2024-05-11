@@ -16,7 +16,7 @@ namespace Fundamentalist.LeadLag
 			}
 			string priceDataDirectory = arguments[0];
 			string outputPath = arguments[1];
-			var detector = new LeadLagDetector(new DateTime(2020, 1, 1), new DateTime(2023, 1, 1), 1);
+			var detector = new LeadLagDetector(new DateOnly(2020, 1, 1), new DateOnly(2023, 1, 1), 1);
 			detector.Run(priceDataDirectory, outputPath);
 		}
 	}

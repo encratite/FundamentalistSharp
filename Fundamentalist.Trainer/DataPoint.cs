@@ -20,7 +20,7 @@ namespace Fundamentalist.Trainer
 		public string Ticker { get; set; }
 
 		[NoColumn]
-		public DateTime Date { get; set; }
+		public DateOnly Date { get; set; }
 
 		[NoColumn]
 		public decimal Performance { get; set; }

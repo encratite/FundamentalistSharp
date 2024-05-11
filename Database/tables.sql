@@ -10,7 +10,7 @@ create table ticker
 	company varchar(80) not null,
 	sector varchar(100),
 	industry varchar(100),
-	exclude bit not null
+	exclude tinyint not null
 ) engine = MyISAM;
 
 create index ticker_symbol_exclude_index on ticker (symbol, exclude);

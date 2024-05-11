@@ -17,22 +17,22 @@
 		public int _badTickers;
 		private int _goodTickers;
 
-		public void Load(string earningsPath, string priceDataDirectory, int? features = 1000, int priceDataMinimum = 200, DateTime? from = null, DateTime? to = null, HashSet<int> featureSelection = null)
+		public void Load(string earningsPath, string priceDataDirectory, int? features = 1000, int priceDataMinimum = 200, DateOnly? from = null, DateOnly? to = null, HashSet<int> featureSelection = null)
 		{
 			Cache = new Dictionary<string, TickerCacheEntry>();
 			_badTickers = 0;
 			_goodTickers = 0;
 			LoadEarnings(earningsPath, features, from, to, featureSelection);
-			DateTime? priceFrom = from;
+			DateOnly? priceFrom = from;
 			if (priceFrom.HasValue)
 			{
 				// Enable common SMA/EMA calculations
-				priceFrom = new DateTime(priceFrom.Value.Year - 1, priceFrom.Value.Month, priceFrom.Value.Day);
+				priceFrom = new DateOnly(priceFrom.Value.Year - 1, priceFrom.Value.Month, priceFrom.Value.Day);
 			}
 			LoadPriceData(priceDataDirectory, priceDataMinimum, priceFrom, to);
 		}
 
-		private void LoadEarnings(string earningsPath, int? features, DateTime? from, DateTime? to, HashSet<int> featureSelection)
+		private void LoadEarnings(string earningsPath, int? features, DateOnly? from, DateOnly? to, HashSet<int> featureSelection)
 		{
 			var earningLines = DataReader.GetEarnings(earningsPath, features, from, to, featureSelection);
 			foreach (var x in earningLines)
@@ -48,7 +48,7 @@
 			}
 		}
 
-		private void LoadPriceData(string priceDataDirectory, int priceDataMinimum, DateTime? from, DateTime? to)
+		private void LoadPriceData(string priceDataDirectory, int priceDataMinimum, DateOnly? from, DateOnly? to)
 		{
 			var options = new ParallelOptions
 			{

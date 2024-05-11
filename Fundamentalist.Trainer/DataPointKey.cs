@@ -3,7 +3,7 @@
 	internal class DataPointKey
 	{
 		public string Ticker { get; set; }
-		public DateTime Date { get; set; }
+		public DateOnly Date { get; set; }
 
 		public DataPointKey(DataPoint dataPoint)
 		{
