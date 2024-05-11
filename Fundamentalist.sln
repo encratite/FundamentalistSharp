@@ -15,9 +15,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Correlation"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.LeadLag", "Fundamentalist.LeadLag\Fundamentalist.LeadLag.csproj", "{E276DCDA-DE8C-421F-BC5E-7F48843CF091}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.SqlImport", "Fundamentalist.SqlImport\Fundamentalist.SqlImport.csproj", "{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.CsvGenerator", "Fundamentalist.CsvGenerator\Fundamentalist.CsvGenerator.csproj", "{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fundamentalist.SqlAnalysis", "Fundamentalist.SqlAnalysis\Fundamentalist.SqlAnalysis.csproj", "{6BB43D02-4A22-495C-80BC-5C738057329A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.SqlAnalysis", "Fundamentalist.SqlAnalysis\Fundamentalist.SqlAnalysis.csproj", "{6BB43D02-4A22-495C-80BC-5C738057329A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
