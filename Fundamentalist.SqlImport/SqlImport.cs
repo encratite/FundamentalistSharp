@@ -1,8 +1,8 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Json;
 using HtmlAgilityPack;
+using MySql.Data.MySqlClient;
 using System.Data;
-using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
@@ -22,22 +22,22 @@ namespace Fundamentalist.SqlImport
 		{
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			using (var connection = new SqlConnection(connectionString))
+			using (var connection = new MySqlConnection(connectionString))
 			{
 				connection.Open();
 				var tickers = DataReader.GetTickersFromJson(tickerPath);
-				ImportTickers(tickers, connection);
-				// ImportProfileData(profileDirectory, connection);
-				// ImportMarketCapData(marketCapDirectory, connection);
-				// ImportPriceData(tickers, priceDataDirectory, connection);
-				// ImportIndexPriceData(priceDataDirectory, connection);
+				// ImportTickers(tickers, connection);
+				ImportProfileData(profileDirectory, connection);
+				ImportMarketCapData(marketCapDirectory, connection);
+				ImportPriceData(tickers, priceDataDirectory, connection);
+				ImportIndexPriceData(priceDataDirectory, connection);
 				ImportEarnings(companyFactsPath, connection);
 			}
 			stopwatch.Stop();
 			Console.WriteLine($"Imported all data into SQL database in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
 
-		private void ImportTickers(List<Ticker> tickers, SqlConnection connection)
+		private void ImportTickers(List<Ticker> tickers, MySqlConnection connection)
 		{
 			Console.WriteLine("Importing tickers");
 			TruncateTable(TickerTable, connection);
@@ -58,18 +58,54 @@ namespace Fundamentalist.SqlImport
 			{
 				bool usedCik = usedCiks.Contains(ticker.Cik);
 				bool exclude = usedCik || (ticker.Symbol.Contains("-") && !permittedSuffixes.IsMatch(ticker.Symbol)) || bannedTitlePattern.IsMatch(ticker.Title);
-				table.Rows.Add(ticker.Symbol, ticker.Cik, ticker.Title, DBNull.Value, DBNull.Value, exclude);
+				table.Rows.Add(ticker.Symbol, ticker.Cik, ticker.Title, null, null, exclude);
 				if (!usedCik)
 					usedCiks.Add(ticker.Cik);
 			}
-			using (var bulkCopy = GetBulkCopy(connection))
+			InsertDataTable(table, connection);
+		}
+
+		private string GetInsertQuery(DataTable table)
+		{
+			var columns = table.Columns.Cast<DataColumn>();
+			string columnNames = string.Join(", ", columns.Select(x => x.ColumnName));
+			string parameterNames = string.Join(", ", columns.Select(x => $"@{x.ColumnName}"));
+			string query = $"insert into {table.TableName} ({columnNames}) values ({parameterNames})";
+			return query;
+		}
+
+		private void InsertDataTable(DataTable table, MySqlConnection connection)
+		{
+			using (var adapter = new MySqlDataAdapter(string.Empty, connection))
 			{
-				bulkCopy.DestinationTableName = TickerTable;
-				bulkCopy.WriteToServer(table);
+				string query = GetInsertQuery(table);
+				adapter.InsertCommand = new MySqlCommand(query, connection);
+				adapter.InsertCommand.UpdatedRowSource = UpdateRowSource.None;
+				var insertParameters = adapter.InsertCommand.Parameters;
+				foreach (DataColumn column in table.Columns)
+				{
+					MySqlDbType type;
+					if (column.DataType == typeof(string))
+						type = MySqlDbType.VarChar;
+					else if (column.DataType == typeof(int))
+						type = MySqlDbType.Int32;
+					else if (column.DataType == typeof(long))
+						type = MySqlDbType.Int64;
+					else if (column.DataType == typeof(DateTime))
+						type = MySqlDbType.Date;
+					else if (column.DataType == typeof(bool))
+						type = MySqlDbType.Bit;
+					else
+						throw new ApplicationException("Unable to map data type");
+					var parameter = new MySqlParameter(column.ColumnName, type);
+					parameter.SourceColumn = column.ColumnName;
+					insertParameters.Add(parameter);
+				}
+				adapter.Update(table);
 			}
 		}
 
-		private void ImportProfileData(string profileDirectory, SqlConnection connection)
+		private void ImportProfileData(string profileDirectory, MySqlConnection connection)
 		{
 			var files = Directory.GetFiles(profileDirectory, "*.html");
 			foreach (string file in files)
@@ -86,8 +122,8 @@ namespace Fundamentalist.SqlImport
 				}
 				var getText = (int i) =>
 				{
-					string encodedTExt = nodes[i].InnerText;
-					string output = HttpUtility.HtmlDecode(encodedTExt);
+					string encodedText = nodes[i].InnerText;
+					string output = HttpUtility.HtmlDecode(encodedText);
 					if (output.Length >= 2 && output[0] == '\'' && output[output.Length - 1] == '\'')
 						output = output.Substring(1, output.Length - 2);
 					if (output.Length == 0 || output == "NULL")
@@ -98,7 +134,7 @@ namespace Fundamentalist.SqlImport
 				};
 				string industry = getText(17);
 				string sector = getText(18);
-				using (var command = new SqlCommand("update ticker set industry = @industry, sector = @sector where symbol = @symbol", connection))
+				using (var command = new MySqlCommand("update ticker set industry = @industry, sector = @sector where symbol = @symbol", connection))
 				{
 					var parameters = command.Parameters;
 					parameters.AddWithValue("@industry", (object)industry ?? DBNull.Value);
@@ -109,7 +145,7 @@ namespace Fundamentalist.SqlImport
 			}
 		}
 
-		private void ImportMarketCapData(string marketCapDirectory, SqlConnection connection)
+		private void ImportMarketCapData(string marketCapDirectory, MySqlConnection connection)
 		{
 			Console.WriteLine("Importing market cap data");
 			TruncateTable(MarketCapTable, connection);
@@ -133,29 +169,25 @@ namespace Fundamentalist.SqlImport
 			}
 		}
 
-		private void ImportMarketCapSamples(string symbol, MarketCapSample[] samples, SqlConnection connection)
+		private void ImportMarketCapSamples(string symbol, MarketCapSample[] samples, MySqlConnection connection)
 		{
 			// Console.WriteLine($"Importing market cap data for {symbol}");
-			using (var bulkCopy = GetBulkCopy(connection))
+			var table = new DataTable(MarketCapTable);
+			table.Columns.AddRange(new DataColumn[]
 			{
-				var table = new DataTable(MarketCapTable);
-				table.Columns.AddRange(new DataColumn[]
-				{
-						new DataColumn("symbol", typeof(string)),
-						new DataColumn("date", typeof(DateTime)),
-						new DataColumn("value", typeof(int)),
-				});
-				foreach (var sample in samples)
-				{
-					DateTime date = DateTimeOffset.FromUnixTimeMilliseconds(sample.Timestamp * 1000).UtcDateTime;
-					table.Rows.Add(symbol, date, sample.MarketCap);
-				}
-				bulkCopy.DestinationTableName = MarketCapTable;
-				bulkCopy.WriteToServer(table);
+				new DataColumn("symbol", typeof(string)),
+				new DataColumn("date", typeof(DateTime)),
+				new DataColumn("market_cap", typeof(long)),
+			});
+			foreach (var sample in samples)
+			{
+				DateTime date = DateTimeOffset.FromUnixTimeMilliseconds(sample.Timestamp * 1000).UtcDateTime;
+				table.Rows.Add(symbol, date, sample.MarketCap * 100000);
 			}
+			InsertDataTable(table, connection);
 		}
 
-		private void ImportEarnings(string companyFactsPath, SqlConnection connection)
+		private void ImportEarnings(string companyFactsPath, MySqlConnection connection)
 		{
 			const int BatchSize = 100;
 			Console.WriteLine("Importing earnings reports");
@@ -196,7 +228,7 @@ namespace Fundamentalist.SqlImport
 			stopwatch.Stop();
 		}
 
-		private bool HasPriceData(ZipArchiveEntry entry, SqlConnection connection)
+		private bool HasPriceData(ZipArchiveEntry entry, MySqlConnection connection)
 		{
 			var pattern = new Regex("[1-9][0-9]+");
 			var match = pattern.Match(entry.Name);
@@ -209,7 +241,7 @@ namespace Fundamentalist.SqlImport
 					ticker join price
 					on ticker.symbol = price.symbol
 				where ticker.cik = @cik";
-			using (var command = new SqlCommand(query, connection))
+			using (var command = new MySqlCommand(query, connection))
 			{
 				command.Parameters.AddWithValue("@cik", cik);
 				int count = (int)command.ExecuteScalar();
@@ -217,61 +249,58 @@ namespace Fundamentalist.SqlImport
 			}
 		}
 
-		private void ImportCompanyFacts(List<CompanyFacts> batch, SqlConnection connection)
+		private void ImportCompanyFacts(List<CompanyFacts> batch, MySqlConnection connection)
 		{
-			using (var bulkCopy = GetBulkCopy(connection))
+			var table = new DataTable(FactTable);
+			table.Columns.AddRange(new DataColumn[]
 			{
-				var table = new DataTable(FactTable);
-				table.Columns.AddRange(new DataColumn[]
+					new DataColumn("cik", typeof(int)),
+					new DataColumn("name", typeof(string)),
+					new DataColumn("unit", typeof(string)),
+					new DataColumn("start_date", typeof(DateTime)),
+					new DataColumn("end_date", typeof(DateTime)),
+					new DataColumn("value", typeof(decimal)),
+					new DataColumn("fiscal_year", typeof(int)),
+					new DataColumn("fiscal_period", typeof(string)),
+					new DataColumn("form", typeof(string)),
+					new DataColumn("filed", typeof(DateTime)),
+					new DataColumn("frame", typeof(string)),
+			});
+			foreach (var companyFacts in batch)
+			{
+				if (companyFacts.Cik == 0 || companyFacts.Facts == null)
+					continue;
+				foreach (var fact in companyFacts.Facts)
 				{
-						new DataColumn("cik", typeof(int)),
-						new DataColumn("name", typeof(string)),
-						new DataColumn("unit", typeof(string)),
-						new DataColumn("end_date", typeof(DateTime)),
-						new DataColumn("value", typeof(decimal)),
-						new DataColumn("fiscal_year", typeof(int)),
-						new DataColumn("fiscal_period", typeof(string)),
-						new DataColumn("form", typeof(string)),
-						new DataColumn("filed", typeof(DateTime)),
-						new DataColumn("frame", typeof(string)),
-				});
-				foreach (var companyFacts in batch)
-				{
-					if (companyFacts.Cik == 0 || companyFacts.Facts == null)
-						continue;
-					foreach (var fact in companyFacts.Facts)
+					foreach (var pair in fact.Value)
 					{
-						foreach (var pair in fact.Value)
+						string factName = pair.Key;
+						foreach (var unitPair in pair.Value.Units)
 						{
-							string factName = pair.Key;
-							foreach (var unitPair in pair.Value.Units)
+							foreach (var factValues in unitPair.Value)
 							{
-								foreach (var factValues in unitPair.Value)
-								{
-									table.Rows.Add(
-										companyFacts.Cik,
-										factName,
-										unitPair.Key,
-										factValues.End,
-										factValues.Value,
-										factValues.FiscalYear,
-										factValues.FiscalPeriod,
-										factValues.Form,
-										factValues.Filed,
-										factValues.Frame
-									);
-								}
+								table.Rows.Add(
+									companyFacts.Cik,
+									factName,
+									unitPair.Key,
+									factValues.Start,
+									factValues.End,
+									factValues.Value,
+									factValues.FiscalYear,
+									factValues.FiscalPeriod,
+									factValues.Form,
+									factValues.Filed,
+									factValues.Frame
+								);
 							}
 						}
 					}
 				}
-				bulkCopy.BulkCopyTimeout = 3600;
-				bulkCopy.DestinationTableName = FactTable;
-				bulkCopy.WriteToServer(table);
 			}
+			InsertDataTable(table, connection);
 		}
 
-		private void ImportPriceData(IEnumerable<Ticker> tickers, string priceDataDirectory, SqlConnection connection)
+		private void ImportPriceData(IEnumerable<Ticker> tickers, string priceDataDirectory, MySqlConnection connection)
 		{
 			Console.WriteLine("Importing price data");
 			TruncateTable(PriceTable, connection);
@@ -287,14 +316,14 @@ namespace Fundamentalist.SqlImport
 			}
 		}
 
-		private void ImportIndexPriceData(string priceDataDirectory, SqlConnection connection)
+		private void ImportIndexPriceData(string priceDataDirectory, MySqlConnection connection)
 		{
 			Console.WriteLine("Importing index price data");
 			var priceData = DataReader.GetPriceData(DataReader.IndexTicker, priceDataDirectory);
 			ImportTickerPriceData(null, priceData, connection);
 		}
 
-		private void ImportTickerPriceData(string symbol, SortedList<DateTime, PriceData> priceData, SqlConnection connection)
+		private void ImportTickerPriceData(string symbol, SortedList<DateTime, PriceData> priceData, MySqlConnection connection)
 		{
 			var table = new DataTable(PriceTable);
 			table.Columns.AddRange(new DataColumn[]
@@ -310,26 +339,22 @@ namespace Fundamentalist.SqlImport
 			});
 			try
 			{
-				using (var bulkCopy = GetBulkCopy(connection))
+				foreach (var pair in priceData)
 				{
-					foreach (var pair in priceData)
-					{
-						var date = pair.Key;
-						var price = pair.Value;
-						table.Rows.Add(
-							symbol,
-							date,
-							price.Open,
-							price.High,
-							price.Low,
-							price.Close,
-							price.AdjustedClose,
-							price.Volume
-						);
-					}
-					bulkCopy.DestinationTableName = PriceTable;
-					bulkCopy.WriteToServer(table);
+					var date = pair.Key;
+					var price = pair.Value;
+					table.Rows.Add(
+						symbol,
+						date,
+						price.Open,
+						price.High,
+						price.Low,
+						price.Close,
+						price.AdjustedClose,
+						price.Volume
+					);
 				}
+				InsertDataTable(table, connection);
 			}
 			catch (OverflowException)
 			{
@@ -342,19 +367,13 @@ namespace Fundamentalist.SqlImport
 			Console.WriteLine($"Processing {ticker.Symbol} ({i}/{count})");
 		}
 
-		private void TruncateTable(string table, SqlConnection connection)
+		private void TruncateTable(string table, MySqlConnection connection)
 		{
-			using (var command = new SqlCommand($"delete from {table}", connection))
+			using (var command = new MySqlCommand($"truncate table {table}", connection))
 			{
 				command.CommandTimeout = 3600;
 				command.ExecuteNonQuery();
 			}
-		}
-
-		private SqlBulkCopy GetBulkCopy(SqlConnection connection)
-		{
-			var options = SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.UseInternalTransaction;
-			return new SqlBulkCopy(connection, options, null);
 		}
 	}
 }

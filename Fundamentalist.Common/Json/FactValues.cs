@@ -4,6 +4,7 @@ namespace Fundamentalist.Common.Json
 {
 	public class FactValues
 	{
+		public DateTime Start { get; set; }
 		public DateTime End { get; set; }
 		[JsonPropertyName("val")]
 		public decimal Value { get; set; }
@@ -19,12 +20,7 @@ namespace Fundamentalist.Common.Json
 
 		public override string ToString()
 		{
-			if (Form == "10-K")
-				return $"{Value} ({Form} {End.Year})";
-			else if (Form == "10-Q")
-				return $"{Value} ({Form} {End.Year} {FiscalPeriod})";
-			else
-				return $"{Value} ({Form} {End.ToShortDateString()})";
+			return $"{Value} ({Form} {Filed.ToShortDateString()})";
 		}
 	}
 }
