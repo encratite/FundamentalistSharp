@@ -1,4 +1,5 @@
 ﻿using CsvHelper;
+using CsvHelper.Configuration;
 using Fundamentalist.Common;
 using Fundamentalist.Common.Json;
 using Fundamentalist.CsvGenerator.Csv;
@@ -15,20 +16,19 @@ namespace Fundamentalist.CsvGenerator
 {
 	internal class CsvGenerator
 	{
-		private Dictionary<int, string> _cikSymbols;
-		private HashSet<string> _symbolsWithPriceData;
+		private HashSet<int> _usedCiks;
 
-		public void WriteCsvFiles(string companyFactsPath, string tickerPath, string priceDataDirectory, string profileDirectory, string marketCapDirectory, string csvOutputDirectory)
+		public void WriteCsvFiles(string companyFactsPath, string edgarPath, string tickerPath, string priceDataDirectory, string profileDirectory, string marketCapDirectory, string csvOutputDirectory)
 		{
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-			var tickers = DataReader.GetTickersFromJson(tickerPath);
-			_cikSymbols = new Dictionary<int, string>();
-			_symbolsWithPriceData = new HashSet<string>();
-			WriteTickers(tickers, profileDirectory, csvOutputDirectory);
-			WriteMarketCapData(marketCapDirectory, csvOutputDirectory);
-			WritePriceData(tickers, priceDataDirectory, csvOutputDirectory);
-			WriteEarnings(companyFactsPath, csvOutputDirectory);
+			_usedCiks = new HashSet<int>();
+			// var tickers = DataReader.GetTickersFromJson(tickerPath);
+			// WriteTickers(tickers, profileDirectory, csvOutputDirectory);
+			// WriteMarketCapData(marketCapDirectory, csvOutputDirectory);
+			// WritePriceData(tickers, priceDataDirectory, csvOutputDirectory);
+			// WriteEarnings(companyFactsPath, csvOutputDirectory);
+			WriteOldEarnings(edgarPath, csvOutputDirectory);
 			stopwatch.Stop();
 			Console.WriteLine($"Generated CSV files in {stopwatch.Elapsed.TotalSeconds:F1} s");
 		}
@@ -61,7 +61,6 @@ namespace Fundamentalist.CsvGenerator
 						Sector = GetNullString(industrySector?.Sector),
 						Exclude = exclude ? 1 : 0
 					};
-					_cikSymbols[ticker.Cik] = ticker.Symbol;
 					csvWriter.WriteRecord(tickerRow);
 					csvWriter.NextRecord();
 				}
@@ -75,7 +74,9 @@ namespace Fundamentalist.CsvGenerator
 			{
 				using (var csvWriter = new CsvWriter(writer, CultureInfo.InvariantCulture))
 				{
-					var options = csvWriter.Context.TypeConverterOptionsCache.GetOptions<DateOnly>();
+					var context = csvWriter.Context;
+					context.Configuration.NewLine = "\n";
+					var options = context.TypeConverterOptionsCache.GetOptions<DateOnly>();
 					options.Formats = new string[] { "o" };
 					write(csvWriter);
 				}
@@ -175,11 +176,6 @@ namespace Fundamentalist.CsvGenerator
 						if (!match.Success)
 							throw new ApplicationException("Unknown pattern in file name");
 						int cik = int.Parse(match.Value);
-						string symbol;
-						if (!_cikSymbols.TryGetValue(cik, out symbol))
-							continue;
-						if (_symbolsWithPriceData.Contains(symbol))
-							continue;
 						using (var stream = entry.Open())
 						{
 							using (var streamReader = new StreamReader(stream))
@@ -193,10 +189,32 @@ namespace Fundamentalist.CsvGenerator
 								WriteCompanyFacts(companyFacts, csvWriter);
 							}
 						}
+						_usedCiks.Add(cik);
 					}
 				});
 			}
 			stopwatch.Stop();
+		}
+
+		private void WriteOldEarnings(string edgarPath, string csvOutputDirectory)
+		{
+			var edgarFiles = Directory.GetFiles(edgarPath, "*.zip");
+			foreach (string path in edgarFiles.OrderDescending())
+			{
+				using var zipFile = ZipFile.OpenRead(path);
+				var sub = zipFile.GetEntry("sub.txt");
+				using var stream = sub.Open();
+				using var reader = new StreamReader(stream);
+				var configuration = new CsvConfiguration(CultureInfo.InvariantCulture)
+				{
+					Delimiter = "\t"
+				};
+				using var csvReader = new CsvReader(reader, configuration);
+				var records = csvReader.GetRecords<SubRow>().ToList();
+				var accessionMap = new Dictionary<string, SubRow>();
+				foreach (var record in records)
+					accessionMap[record.AccessionNumber] = record;
+			}
 		}
 
 		private void WriteCompanyFacts(CompanyFacts companyFacts, CsvWriter csvWriter)
@@ -247,10 +265,7 @@ namespace Fundamentalist.CsvGenerator
 				{
 					var priceData = DataReader.GetPriceData(ticker.Symbol, priceDataDirectory);
 					if (priceData != null)
-					{
 						WriteTickerPriceData(ticker.Symbol, priceData, csvWriter);
-						_symbolsWithPriceData.Add(ticker.Symbol);
-					}
 				}
 			});
 		}

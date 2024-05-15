@@ -6,10 +6,8 @@
 		public string Form { get; set; }
 		public DateTime? From { get; set; }
 		public DateTime? To { get; set; }
-		public decimal? Upper { get; set; }
-		public decimal? Lower { get; set; }
-		public int? Limit { get; set; }
-		public decimal? MinimumFrequency { get; set; }
+		public int? Horizon { get; set; }
+		public int? MinimumFrequency { get; set; }
 		public string Output { get; set; }
 
 		public void Validate()
@@ -19,9 +17,7 @@
 				Form != null &&
 				From.HasValue &&
 				To.HasValue &&
-				Upper.HasValue &&
-				Lower.HasValue &&
-				Limit.HasValue &&
+				Horizon.HasValue &&
 				MinimumFrequency.HasValue &&
 				Output != null;
 			if (!valid)

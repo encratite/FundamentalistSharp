@@ -20,7 +20,7 @@ create table fact
 	cik int not null,
 	name varchar(300) not null,
 	unit varchar(20) not null,
-	start_date date not null,
+	start_date date,
 	end_date date not null,
 	value decimal(30, 6) not null,
 	fiscal_year int,

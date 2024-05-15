@@ -4,7 +4,7 @@ namespace Fundamentalist.Common.Json
 {
 	public class FactValues
 	{
-		public DateOnly Start { get; set; }
+		public DateOnly? Start { get; set; }
 		public DateOnly End { get; set; }
 		[JsonPropertyName("val")]
 		public decimal Value { get; set; }

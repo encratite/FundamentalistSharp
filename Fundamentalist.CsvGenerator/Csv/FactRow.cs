@@ -11,7 +11,7 @@ namespace Fundamentalist.CsvGenerator.Csv
 		[Name("unit")]
 		public string Unit { get; set; }
 		[Name("start_date")]
-		public DateOnly Start { get; set; }
+		public DateOnly? Start { get; set; }
 		[Name("end_date")]
 		public DateOnly End { get; set; }
 		[Name("value")]
