@@ -201,20 +201,38 @@ namespace Fundamentalist.CsvGenerator
 			var edgarFiles = Directory.GetFiles(edgarPath, "*.zip");
 			foreach (string path in edgarFiles.OrderDescending())
 			{
-				using var zipFile = ZipFile.OpenRead(path);
-				var sub = zipFile.GetEntry("sub.txt");
-				using var stream = sub.Open();
-				using var reader = new StreamReader(stream);
-				var configuration = new CsvConfiguration(CultureInfo.InvariantCulture)
-				{
-					Delimiter = "\t"
-				};
-				using var csvReader = new CsvReader(reader, configuration);
-				var records = csvReader.GetRecords<SubRow>().ToList();
-				var accessionMap = new Dictionary<string, SubRow>();
-				foreach (var record in records)
-					accessionMap[record.AccessionNumber] = record;
+				using var archive = ZipFile.OpenRead(path);
+				var accessionMap = ParseSub(archive);
+				ParseNum(archive);
 			}
+		}
+
+		private List<T> GetRecords<T>(string filename, ZipArchive archive)
+		{
+			var sub = archive.GetEntry(filename);
+			using var stream = sub.Open();
+			using var reader = new StreamReader(stream);
+			var configuration = new CsvConfiguration(CultureInfo.InvariantCulture)
+			{
+				Delimiter = "\t"
+			};
+			using var csvReader = new CsvReader(reader, configuration);
+			var records = csvReader.GetRecords<T>().ToList();
+			return records;
+		}
+
+		private Dictionary<string, SubRow> ParseSub(ZipArchive archive)
+		{
+			var records = GetRecords<SubRow>("sub.txt", archive);
+			var accessionMap = new Dictionary<string, SubRow>();
+			foreach (var record in records)
+				accessionMap[record.AccessionNumber] = record;
+			return accessionMap;
+		}
+
+		private void ParseNum(ZipArchive archive)
+		{
+			var records = GetRecords<NumRow>("num.txt", archive);
 		}
 
 		private void WriteCompanyFacts(CompanyFacts companyFacts, CsvWriter csvWriter)

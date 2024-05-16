@@ -20,6 +20,8 @@ namespace Fundamentalist.CsvGenerator.Csv
 		public string FiscalPeriod { get; set; }
 		[Name("filed")]
 		public int FiledInt { get; set; }
+		[Name("accepted")]
+		public DateTime Accepted { get; set; }
 
 		public DateOnly? Period
 		{
