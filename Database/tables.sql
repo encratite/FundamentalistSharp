@@ -1,60 +1,71 @@
-drop table if exists price;
-drop table if exists fact;
-drop table if exists market_cap;
+drop table if exists sec_submission;
+
+create table sec_submission
+(
+	adsh char(20) not null,
+	cik int not null,
+	form varchar(7) not null,
+	period date,
+	fiscal_year int,
+	fiscal_period char(2),
+	filed date not null,
+	accepted datetime not null
+) engine = MyISAM;
+
+create index sec_submission_form_filed_index on sec_submission (form, filed);
+
+drop table if exists sec_number;
+
+create table sec_number
+(
+	adsh char(20) not null,
+	tag varchar(256) not null,
+	end_date date not null,
+	quarters tinyint not null,
+	unit varchar(20) not null,
+	value decimal(30, 6) not null
+) engine = MyISAM;
+
+create index sec_number_adsh_index on sec_number (adsh);
+
 drop table if exists ticker;
 
 create table ticker
 (
-	symbol varchar(10) primary key,
-	cik int not null,
-	company varchar(80) not null,
+	cik int,
+	ticker varchar(10) not null,
+	name varchar(200) not null,
+	is_delisted tinyint not null,
+	category varchar(50) not null,
+	sic_sector varchar(100),
+	sic_industry varchar(100),
+	fama_industry varchar(100),
 	sector varchar(100),
 	industry varchar(100),
-	exclude tinyint not null
-) engine = MyISAM;
+	market_cap tinyint,
+	revenue tinyint,
+	currency varchar(5) not null,
+	country varchar(50),
+	state varchar(50),
+	related_tickers varchar(300)
+);
 
-create index ticker_symbol_exclude_index on ticker (symbol, exclude);
+create index ticker_cik_index on ticker (cik);
+create index ticker_ticker_index on ticker (ticker);
 
-create table fact
-(
-	cik int not null,
-	name varchar(300) not null,
-	unit varchar(20) not null,
-	start_date date,
-	end_date date not null,
-	value decimal(30, 6) not null,
-	fiscal_year int,
-	fiscal_period char(2),
-	form varchar(7) not null,
-	filed date not null,
-	frame varchar(9)
-) engine = MyISAM;
-
-create index fact_form_filed_cik_index on fact (form, filed, cik);
-create index fact_filed_index on fact (filed);
-create index fact_name_filed_index on fact (name(200), filed);
-create index fact_cik_form_filed_index on fact (cik, form, filed);
+drop table if exists price;
 
 create table price
 (
-	symbol varchar(10) references ticker (symbol),
+	ticker varchar(10) not null,
 	date date not null,
 	open_price decimal(20, 5) not null,
 	high decimal(20, 5) not null,
 	low decimal(20, 5) not null,
 	close_price decimal(20, 5) not null,
+	volume decimal(20, 5) not null,
 	adjusted_close decimal(20, 5) not null,
-	volume bigint not null
+	unadjusted_close decimal(20, 5) not null
 ) engine = MyISAM;
 
-create index price_date_index on price (date);
-create index price_symbol_date_index on price (symbol, date);
-
-create table market_cap
-(
-	symbol varchar(10) references ticker (symbol),
-	date date not null,
-	market_cap bigint not null
-) engine = MyISAM;
-
-create index market_cap_symbol_date_index on market_cap (symbol, date);
+create index price_ticker_date_index on price (ticker, date);

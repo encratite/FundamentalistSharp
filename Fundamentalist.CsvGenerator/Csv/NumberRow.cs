@@ -2,19 +2,19 @@
 
 namespace Fundamentalist.CsvGenerator.Csv
 {
-	internal class NumRow
+	internal class NumberRow
 	{
 		[Name("adsh")]
-		public string AccessionNumber { get; set; }
+		public string Adsh { get; set; }
 		[Name("tag")]
 		public string Tag { get; set; }
 		[Name("ddate")]
-		public int EndDateInt { get; set; }
+		public int EndDate { get; set; }
 		[Name("qtrs")]
 		public int Quarters { get; set; }
 		[Name("uom")]
 		public string Unit { get; set; }
 		[Name("value")]
-		public decimal Value { get; set; }
+		public decimal? Value { get; set; }
 	}
 }
