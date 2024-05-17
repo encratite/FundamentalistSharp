@@ -2,7 +2,7 @@ delimiter $$
 
 drop function if exists get_close_price;
 
-create function get_close_price(_symbol varchar(10), _date date)
+create function get_close_price(_ticker varchar(10), _date date)
 returns decimal(20, 5) deterministic
 return
 (
@@ -11,8 +11,8 @@ return
 	from price
 	where
 	(
-		(_symbol is null and symbol is null)
-		or symbol = _symbol
+		(_ticker is null and ticker is null)
+		or ticker = _ticker
 	)
 	and date >= _date
 	order by date
@@ -21,51 +21,55 @@ return
 
 drop function if exists get_performance;
 
-create function get_performance(_symbol varchar(10), _from date, _to date)
+create function get_performance(_ticker varchar(10), _from date, _to date)
 returns decimal(20, 5) deterministic
 return
-	ifnull(get_close_price(_symbol, _to) / get_close_price(_symbol, _from), 0)
+	ifnull(get_close_price(_ticker, _to) / get_close_price(_ticker, _from), 0)
 	- get_close_price(null, _to) / get_close_price(null, _from);
 	
 drop procedure if exists get_facts_by_ratio;
 
-create procedure get_facts_by_ratio(_divisor varchar(300), _from date, _to date, _form varchar(10), _horizon int)
+create procedure get_facts_by_ratio(_divisor varchar(256), _from date, _to date, _form varchar(10), _horizon int)
 begin
 	select
-		cik,
+		R.cik,
 		filed,
-		name,
+		tag,
 		ratio,
-		get_performance(symbol, filed, date_add(filed, interval _horizon month)) as performance
+		get_performance(S.ticker, filed, date_add(filed, interval _horizon month)) as performance
 	from
 	(
 		select
-			F1.cik,
-			ticker.symbol,
-			F1.filed,
-			F1.name,
-			F1.value / F2.value as ratio,
+			S.cik,
+			S.filed,
+			N1.tag,
+			N1.value / N2.value as ratio,
 			row_number() over
 			(
-				partition by F1.cik, filed, name
-				order by F1.end_date desc, F1.start_date desc
+				partition by S.cik, S.filed, N1.tag
+				order by N1.end_date desc
 			) as group_rank
-		from fact as F1 join ticker
-		on F1.cik = ticker.cik
-		join fact as F2
-		on F1.cik = F2.cik and F1.filed = F2.filed and F1.form = F2.form
+		from
+			sec_submission as S
+			join sec_number as N1
+			on S.adsh = N1.adsh
+			join sec_number as N2
+			on S.adsh = N2.adsh
 		where
-			F1.form = _form
-			and F1.filed >= _from
-			and F1.filed < _to
-			and F1.unit = 'USD'
-			and F1.name <> _divisor
-			and F2.name = _divisor
-			-- and F2.value >= 1000000
-			and ticker.exclude = 0
-	) as F
+			S.form = _form
+			and S.filed >= _from
+			and S.filed < _to
+			and N1.tag <> _divisor
+			and N1.unit = 'USD'
+			and N2.tag = _divisor
+			and N2.unit = 'USD'
+			and N1.end_date = N2.end_date
+			and (_form <> '10-K' or (N1.quarters in (0, 4) and N2.quarters in (0, 4)))
+			and (_form <> '10-Q' or (N1.quarters in (0, 1) and N2.quarters in (0, 1)))
+	) as R
+	join stock as S on R.cik = S.cik
 	where group_rank = 1
-	order by cik, filed, name;
+	order by cik, filed, tag;
 end;
 
 drop procedure if exists get_fact_frequency;
@@ -73,19 +77,18 @@ drop procedure if exists get_fact_frequency;
 create procedure get_fact_frequency(_from date, _to date, _form varchar(10))
 begin
 	select
-		name,
-		unit,
+		N.tag,
+		N.unit,
 		count(*) as count
 	from
-		fact join ticker
-		on fact.cik = ticker.cik
+		sec_submission as S join sec_number as N
+		on S.adsh = N.adsh
 	where
-		exclude = 0
-		and form = _form
-		and filed >= _from
-		and filed < _to
+		S.form = _form
+		and S.filed >= _from
+		and S.filed < _to
 	group by
-		name,
-		unit
+		N.tag,
+		N.unit
 	order by count desc;
 end;

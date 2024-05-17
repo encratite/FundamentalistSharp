@@ -57,7 +57,7 @@ drop table if exists price;
 
 create table price
 (
-	ticker varchar(10) not null,
+	ticker varchar(10),
 	date date not null,
 	open_price decimal(20, 5) not null,
 	high decimal(20, 5) not null,
@@ -65,7 +65,23 @@ create table price
 	close_price decimal(20, 5) not null,
 	volume decimal(20, 5) not null,
 	adjusted_close decimal(20, 5) not null,
-	unadjusted_close decimal(20, 5) not null
+	unadjusted_close decimal(20, 5)
 ) engine = MyISAM;
 
 create index price_ticker_date_index on price (ticker, date);
+
+drop view if exists stock;
+
+create view stock as
+select distinct
+	cik,
+	ticker
+from ticker
+where
+	cik is not null
+	and category in
+	(
+		'Domestic Common Stock',
+		'Domestic Common Stock Primary Class',
+		'Domestic Common Stock Secondary Class'
+	);
