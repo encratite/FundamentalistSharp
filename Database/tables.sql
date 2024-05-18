@@ -75,7 +75,8 @@ drop view if exists stock;
 create view stock as
 select distinct
 	cik,
-	ticker
+	ticker,
+	market_cap
 from ticker
 where
 	cik is not null
@@ -84,4 +85,5 @@ where
 		'Domestic Common Stock',
 		'Domestic Common Stock Primary Class',
 		'Domestic Common Stock Secondary Class'
-	);
+	)
+	and country = 'US';

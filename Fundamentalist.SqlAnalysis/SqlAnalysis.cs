@@ -1,4 +1,5 @@
-﻿using MySql.Data.MySqlClient;
+﻿using Fundamentalist.Common;
+using MySql.Data.MySqlClient;
 using System.Data.SqlTypes;
 using System.Text.Json;
 
@@ -10,16 +11,17 @@ namespace Fundamentalist.SqlAnalysis
 
 		public void Run(Configuration configuration)
 		{
-			const string Revenues = "Revenues";
-			const string Assets = "Assets";
-
 			_configuration = configuration;
-			List<FactStats> revenueStats, assetStats;
+			List<TagStats> singleTagStats, revenueStats, assetStats;
 			using (var connection = new MySqlConnection(_configuration.ConnectionString))
 			{
 				connection.Open();
-				revenueStats = GetFactStats(Revenues, connection);
-				assetStats = GetFactStats(Assets, connection);
+				using (new PerformanceTimer("gathering single stats"))
+					singleTagStats = GetSingleTagStats(connection);
+				using (new PerformanceTimer("gathering revenue stats"))
+					revenueStats = GetTagRatioStats("Revenues", connection);
+				using (new PerformanceTimer("gathering asset stats"))
+					assetStats = GetTagRatioStats("Assets", connection);
 			}
 			
 			using (var writer = new StreamWriter(_configuration.Output))
@@ -27,50 +29,73 @@ namespace Fundamentalist.SqlAnalysis
 				string json = JsonSerializer.Serialize(_configuration);
 				writer.WriteLine("Configuration used:");
 				writer.WriteLine(json);
-				WriteCoefficients(Revenues, revenueStats, writer);
-				WriteCoefficients(Assets, assetStats, writer);
+				WriteCoefficients("Single tags", singleTagStats, false, writer);
+				WriteCoefficients("Revenue quotients", revenueStats, true, writer);
+				WriteCoefficients("Asset quotients", assetStats, true, writer);
 			}
 		}
 
-		private List<FactStats> GetFactStats(string divisor, MySqlConnection connection)
+		private List<TagStats> GetSingleTagStats(MySqlConnection connection)
 		{
-			var facts = new Dictionary<string, FactStats>();
-			string query = "call get_facts_by_ratio(@divisor, @from, @to, @form, @horizon);";
+			string query = "call get_tag_performance(@from, @to, @form, @horizon);";
 			var command = new MySqlCommand(query, connection);
-			command.CommandTimeout = 3600;
-			var parameters = command.Parameters;
-			parameters.AddWithValue("@divisor", divisor);
-			parameters.AddWithValue("@from", _configuration.From);
-			parameters.AddWithValue("@to", _configuration.To);
-			parameters.AddWithValue("@form", _configuration.Form);
-			parameters.AddWithValue("@horizon", _configuration.Horizon);
+			SetCommonParameters(command);
+			var stats = GetStats(command);
+			return stats;
+		}
+
+		private List<TagStats> GetTagRatioStats(string divisor, MySqlConnection connection)
+		{
+			var tags = new Dictionary<string, TagStats>();
+			string query = "call get_tag_ratio_performance(@divisor, @from, @to, @form, @horizon);";
+			var command = new MySqlCommand(query, connection);
+			SetCommonParameters(command);
+			command.Parameters.AddWithValue("@divisor", divisor);
+			var stats = GetStats(command);
+			return stats;
+		}
+
+		private List<TagStats> GetStats(MySqlCommand command)
+		{
 			using var reader = command.ExecuteReader();
+			var tags = new Dictionary<string, TagStats>();
 			while (reader.Read())
 			{
 				try
 				{
-					string name = reader.GetString("name");
-					decimal ratio = reader.GetDecimal("ratio");
+					string name = reader.GetString("tag");
+					decimal value = reader.GetDecimal("value");
 					decimal performance = reader.GetDecimal("performance");
-					FactStats stats;
-					if (!facts.TryGetValue(name, out stats))
+					TagStats stats;
+					if (!tags.TryGetValue(name, out stats))
 					{
-						stats = new FactStats(name);
-						facts[name] = stats;
+						stats = new TagStats(name);
+						tags[name] = stats;
 					}
-					var ratioPerformance = new Observation(ratio, performance);
-					stats.Observations.Add(ratioPerformance);
+					var observation = new Observation(value, performance);
+					stats.Observations.Add(observation);
 				}
 				catch (SqlNullValueException)
 				{
 				}
 			}
-			var filteredFacts = facts.Values.Where(x => x.Observations.Count >= _configuration.MinimumFrequency).ToList();
-			Parallel.ForEach(filteredFacts, stats =>
+			var filteredTags = tags.Values.Where(x => x.Observations.Count >= _configuration.MinimumFrequency).ToList();
+			Parallel.ForEach(filteredTags, stats =>
 			{
 				stats.SpearmanCoefficient = GetSpearmanCoefficient(stats.Observations);
+				stats.Covariance = GetCovariance(stats.Observations);
 			});
-			return filteredFacts;
+			return filteredTags;
+		}
+
+		private void SetCommonParameters(MySqlCommand command)
+		{
+			command.CommandTimeout = 3600;
+			var parameters = command.Parameters;
+			parameters.AddWithValue("@from", _configuration.From);
+			parameters.AddWithValue("@to", _configuration.To);
+			parameters.AddWithValue("@form", _configuration.Form);
+			parameters.AddWithValue("@horizon", _configuration.Horizon);
 		}
 
 		private decimal GetSpearmanCoefficient(List<Observation> observations)
@@ -78,14 +103,33 @@ namespace Fundamentalist.SqlAnalysis
 			decimal n = observations.Count;
 			var xRanks = GetRanks(observations, true);
 			var yRanks = GetRanks(observations, false);
-			decimal squareSum = 0;
+			decimal sum = 0;
 			for (int i = 0; i < xRanks.Length; i++)
 			{
 				decimal difference = xRanks[i] - yRanks[i];
-				squareSum += difference * difference;
+				sum += difference * difference;
 			}
-			decimal coefficient = 1m - 6m * squareSum / n / (n * n - 1m);
+			decimal coefficient = 1m - 6m * sum / n / (n * n - 1m);
 			return coefficient;
+		}
+
+		private decimal GetCovariance(List<Observation> observations)
+		{
+			decimal sum = 0;
+			var array = observations.ToArray();
+			for (int i = 0; i < array.Length; i++)
+			{
+				for (int j = i + 1; j < array.Length; j++)
+				{
+					var o1 = array[i];
+					var o2 = array[j];
+					decimal dx = o1.X - o2.X;
+					decimal dy = o1.Y - o2.Y;
+					sum += dx * dy;
+				}
+			}
+			decimal covariance = sum / (array.Length * array.Length);
+			return covariance;
 		}
 
 		private int[] GetRanks(List<Observation> observations, bool selectX)
@@ -96,14 +140,19 @@ namespace Fundamentalist.SqlAnalysis
 			return output;
 		}
 
-		private void WriteCoefficients(string divisor, List<FactStats> facts, StreamWriter writer)
+		private void WriteCoefficients(string title, List<TagStats> tags, bool enableCovariance, StreamWriter writer)
 		{
 			writer.WriteLine(string.Empty);
-			writer.WriteLine($"Spearman correlation for \"{divisor}\":");
+			writer.WriteLine($"{title}:");
 			int i = 1;
-			foreach (var stats in facts.OrderByDescending(x => x.SpearmanCoefficient.Value))
+			foreach (var stats in tags.OrderByDescending(x => x.SpearmanCoefficient.Value))
 			{
-				writer.WriteLine($"{i}. {stats.Name} ({stats.SpearmanCoefficient.Value:F3}, {stats.Observations.Count} samples)");
+				var statsStrings = new List<string>();
+				statsStrings.Add($"Spearman {stats.SpearmanCoefficient.Value:F3}");
+				if (enableCovariance)
+					statsStrings.Add($"covariance {stats.Covariance:F3}");
+				statsStrings.Add($"{stats.Observations.Count} samples");
+				writer.WriteLine($"{i}. {stats.Name} ({string.Join(" ", statsStrings)})");
 				i++;
 			}
 		}

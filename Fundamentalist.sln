@@ -9,12 +9,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Common", "Fu
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Trainer", "Fundamentalist.Trainer\Fundamentalist.Trainer.csproj", "{D98D3494-2600-44A3-BC46-F2B918632030}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Xbrl", "Fundamentalist.Xbrl\Fundamentalist.Xbrl.csproj", "{459AEFF8-1387-4471-8AD4-E33AE4A53926}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Correlation", "Fundamentalist.Correlation\Fundamentalist.Correlation.csproj", "{D95C15FC-4870-4919-8D17-8575D448E181}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.LeadLag", "Fundamentalist.LeadLag\Fundamentalist.LeadLag.csproj", "{E276DCDA-DE8C-421F-BC5E-7F48843CF091}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.CsvGenerator", "Fundamentalist.CsvGenerator\Fundamentalist.CsvGenerator.csproj", "{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.SqlAnalysis", "Fundamentalist.SqlAnalysis\Fundamentalist.SqlAnalysis.csproj", "{6BB43D02-4A22-495C-80BC-5C738057329A}"
@@ -37,18 +31,6 @@ Global
 		{D98D3494-2600-44A3-BC46-F2B918632030}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D98D3494-2600-44A3-BC46-F2B918632030}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D98D3494-2600-44A3-BC46-F2B918632030}.Release|Any CPU.Build.0 = Release|Any CPU
-		{459AEFF8-1387-4471-8AD4-E33AE4A53926}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{459AEFF8-1387-4471-8AD4-E33AE4A53926}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{459AEFF8-1387-4471-8AD4-E33AE4A53926}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{459AEFF8-1387-4471-8AD4-E33AE4A53926}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D95C15FC-4870-4919-8D17-8575D448E181}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D95C15FC-4870-4919-8D17-8575D448E181}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D95C15FC-4870-4919-8D17-8575D448E181}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D95C15FC-4870-4919-8D17-8575D448E181}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E276DCDA-DE8C-421F-BC5E-7F48843CF091}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E276DCDA-DE8C-421F-BC5E-7F48843CF091}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E276DCDA-DE8C-421F-BC5E-7F48843CF091}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E276DCDA-DE8C-421F-BC5E-7F48843CF091}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
