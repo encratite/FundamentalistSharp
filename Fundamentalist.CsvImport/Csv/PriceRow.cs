@@ -1,4 +1,5 @@
 ﻿using CsvHelper.Configuration.Attributes;
+using Fundamentalist.Common.Document;
 
 namespace Fundamentalist.CsvImport.Csv
 {
@@ -22,5 +23,22 @@ namespace Fundamentalist.CsvImport.Csv
 		public decimal AdjustedClose { get; set; }
 		[Name("closeunadj")]
 		public decimal UnadjustedClose { get; set; }
+
+		public Price GetPrice()
+		{
+			var price = new Price
+			{
+				Ticker = Ticker,
+				Date = Date,
+				Open = Open,
+				High = High,
+				Low = Low,
+				Close = Close,
+				Volume = Volume.Value,
+				AdjustedClose = AdjustedClose,
+				UnadjustedClose = UnadjustedClose
+			};
+			return price;
+		}
 	}
 }

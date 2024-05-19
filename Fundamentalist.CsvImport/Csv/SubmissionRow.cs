@@ -1,4 +1,5 @@
 ﻿using CsvHelper.Configuration.Attributes;
+using Fundamentalist.CsvImport.Document;
 
 namespace Fundamentalist.CsvImport.Csv
 {
@@ -20,5 +21,23 @@ namespace Fundamentalist.CsvImport.Csv
 		public int Filed { get; set; }
 		[Name("accepted")]
 		public DateTime Accepted { get; set; }
+
+		public SecSubmission GetSecSubmission()
+		{
+			var output = new SecSubmission
+			{
+				Adsh = Adsh,
+				Cik = Cik,
+				Form = Form,
+				Period = IntDate.Get(Period),
+				FiscalPeriod = FiscalPeriod,
+				Filed = IntDate.Get(Filed).Value,
+				Accepted = Accepted
+			};
+			int fiscalYear;
+			if (int.TryParse(FiscalYear, out fiscalYear))
+				output.FiscalYear = fiscalYear;
+			return output;
+		}
 	}
 }

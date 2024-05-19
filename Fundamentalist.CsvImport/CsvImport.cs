@@ -1,6 +1,7 @@
 ﻿using CsvHelper;
 using CsvHelper.Configuration;
 using Fundamentalist.Common;
+using Fundamentalist.Common.Document;
 using Fundamentalist.CsvImport.Csv;
 using Fundamentalist.CsvImport.Document;
 using MongoDB.Bson;
@@ -32,9 +33,9 @@ namespace Fundamentalist.CsvImport
 			BsonSerializer.RegisterSerializer(typeof(decimal?), new NullableSerializer<decimal>(new DecimalSerializer(BsonType.Decimal128)));
 			var client = new MongoClient(connectionString);
 			var database = client.GetDatabase("fundamentalist");
-			// ImportSecData(edgarPath, database);
-			// ImportPriceData(priceCsvPath, database);
-			// ImportIndexData(indexCsvPath, database);
+			ImportSecData(edgarPath, database);
+			ImportPriceData(priceCsvPath, database);
+			ImportIndexData(indexCsvPath, database);
 			ImportTickers(tickerCsvPath, database);
 		}
 
@@ -55,12 +56,12 @@ namespace Fundamentalist.CsvImport
 				var secSubmissions = new Dictionary<string, SecSubmission>();
 				foreach (var submission in submissions)
 				{
-					var secSubmission = new SecSubmission(submission);
+					var secSubmission = submission.GetSecSubmission();
 					secSubmissions[submission.Adsh] = secSubmission;
 				}
 				foreach (var number in numbers)
 				{
-					var secNumber = new SecNumber(number);
+					var secNumber = number.GetSecNumber();
 					secSubmissions[number.Adsh].Numbers.Add(secNumber);
 				}
 				if (secSubmissions.Values.Any())
@@ -88,7 +89,7 @@ namespace Fundamentalist.CsvImport
 			{
 				if (priceRow.Date.Year < PriceMinimumYear || !priceRow.Volume.HasValue)
 					continue;
-				var priceData = new Price(priceRow);
+				var priceData = priceRow.GetPrice();
 				batch.Add(priceData);
 				if (batch.Count >= 1000)
 				{
@@ -107,7 +108,7 @@ namespace Fundamentalist.CsvImport
 			using var csvReader = GetCsvReader(reader);
 			var records = csvReader.GetRecords<LegacyPriceRow>()
 				.Where(row => row.Date.Year >= PriceMinimumYear)
-				.Select(row => new Price(null, row));
+				.Select(row => row.GetPrice(null));
 			collection.InsertMany(records);
 		}
 
@@ -126,7 +127,7 @@ namespace Fundamentalist.CsvImport
 			var output = new List<TickerData>();
 			foreach (var row in records)
 			{
-				var ticker = new TickerData(row);
+				var ticker = row.GetTickerData();
 				if (
 					usedSymbols.Contains(ticker.Ticker) ||
 					ticker.Country != "US" ||
@@ -148,16 +149,16 @@ namespace Fundamentalist.CsvImport
 			var sub = archive.GetEntry(filename);
 			using var stream = sub.Open();
 			using var reader = new StreamReader(stream);
-			using var csvReader = GetCsvReader(reader);
+			using var csvReader = GetCsvReader(reader, "\t");
 			var records = csvReader.GetRecords<T>().ToList();
 			return records;
 		}
 
-		private CsvReader GetCsvReader(StreamReader reader)
+		private CsvReader GetCsvReader(StreamReader reader, string delimiter = ",")
 		{
 			var configuration = new CsvConfiguration(CultureInfo.InvariantCulture)
 			{
-				Delimiter = ","
+				Delimiter = delimiter
 			};
 			var csvReader = new CsvReader(reader, configuration);
 			return csvReader;

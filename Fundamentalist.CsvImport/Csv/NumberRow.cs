@@ -1,4 +1,5 @@
 ﻿using CsvHelper.Configuration.Attributes;
+using Fundamentalist.CsvImport.Document;
 
 namespace Fundamentalist.CsvImport.Csv
 {
@@ -16,5 +17,18 @@ namespace Fundamentalist.CsvImport.Csv
 		public string Unit { get; set; }
 		[Name("value")]
 		public decimal? Value { get; set; }
+
+		public SecNumber GetSecNumber()
+		{
+			var output = new SecNumber
+			{
+				Tag = Tag,
+				EndDate = IntDate.Get(EndDate).Value,
+				Quarters = Quarters,
+				Unit = Unit,
+				Value = Value ?? 0m
+			};
+			return output;
+		}
 	}
 }
