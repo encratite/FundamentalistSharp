@@ -1,7 +1,7 @@
-﻿using Fundamentalist.CsvGenerator.Csv;
+﻿using Fundamentalist.CsvImport.Csv;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Fundamentalist.CsvGenerator.Document
+namespace Fundamentalist.CsvImport.Document
 {
 	internal class SecNumber
 	{

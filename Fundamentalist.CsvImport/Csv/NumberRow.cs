@@ -1,6 +1,6 @@
 ﻿using CsvHelper.Configuration.Attributes;
 
-namespace Fundamentalist.CsvGenerator.Csv
+namespace Fundamentalist.CsvImport.Csv
 {
 	internal class NumberRow
 	{

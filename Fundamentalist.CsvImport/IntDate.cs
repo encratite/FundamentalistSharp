@@ -1,4 +1,4 @@
-﻿namespace Fundamentalist.CsvGenerator
+﻿namespace Fundamentalist.CsvImport
 {
 	internal static class IntDate
 	{

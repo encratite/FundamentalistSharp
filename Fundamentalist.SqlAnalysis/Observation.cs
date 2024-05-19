@@ -1,4 +1,4 @@
-﻿namespace Fundamentalist.SqlAnalysis
+﻿namespace Fundamentalist.Analysis
 {
 	internal class Observation
 	{

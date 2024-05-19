@@ -16,7 +16,7 @@ namespace Fundamentalist.CsvImport.Document
 		public decimal Close { get; set; }
 		public decimal Volume { get; set; }
 		public decimal AdjustedClose { get; set; }
-		public decimal UnadjustedClose { get; set; }
+		public decimal? UnadjustedClose { get; set; }
 
 		public Price(PriceRow row)
 		{
@@ -29,6 +29,20 @@ namespace Fundamentalist.CsvImport.Document
 			Volume = row.Volume.Value;
 			AdjustedClose = row.AdjustedClose;
 			UnadjustedClose = row.UnadjustedClose;
+		}
+
+		public Price(string ticker, LegacyPriceRow row)
+		{
+			Ticker = ticker;
+			Date = row.Date;
+			Date = row.Date;
+			Open = row.Open;
+			High = row.High;
+			Low = row.Low;
+			Close = row.Close;
+			Volume = row.Volume;
+			AdjustedClose = row.AdjustedClose;
+			UnadjustedClose = null;
 		}
 	}
 }

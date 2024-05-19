@@ -1,7 +1,7 @@
 ﻿using System.Reflection;
 using System.Text.Json;
 
-namespace Fundamentalist.SqlAnalysis
+namespace Fundamentalist.Analysis
 {
 	internal class Program
 	{
@@ -22,7 +22,7 @@ namespace Fundamentalist.SqlAnalysis
 			};
 			var configuration = JsonSerializer.Deserialize<Configuration>(jsonConfiguration, options);
 			configuration.Validate();
-			var sqlAnalysis = new SqlAnalysis();
+			var sqlAnalysis = new Analysis();
 			sqlAnalysis.Run(configuration);
 		}
 	}

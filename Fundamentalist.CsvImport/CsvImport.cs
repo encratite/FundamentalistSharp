@@ -1,25 +1,27 @@
 ﻿using CsvHelper;
 using CsvHelper.Configuration;
 using Fundamentalist.Common;
-using Fundamentalist.CsvGenerator.Csv;
-using Fundamentalist.CsvGenerator.Document;
-using MongoDB.Bson.Serialization;
+using Fundamentalist.CsvImport.Csv;
+using Fundamentalist.CsvImport.Document;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Conventions;
 using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
 using System.Globalization;
 using System.IO.Compression;
-using Fundamentalist.CsvImport.Csv;
-using Fundamentalist.CsvImport.Document;
-using System.ComponentModel;
-using Fundamentalist.CsvImport;
 
-namespace Fundamentalist.CsvGenerator
+namespace Fundamentalist.CsvImport
 {
 	internal class CsvImport
 	{
-		public void ImportCsvFiles(string edgarPath, string priceCsvPath, string connectionString)
+		private const string SubmissionsCollection = "submissions";
+		private const string PricesCollection = "prices";
+		private const string TickersCollection = "tickers";
+
+		private const int PriceMinimumYear = 2009;
+
+		public void ImportCsvFiles(string edgarPath, string priceCsvPath, string indexCsvPath, string tickerCsvPath, string connectionString)
 		{
 			var pack = new ConventionPack
 			{
@@ -31,15 +33,16 @@ namespace Fundamentalist.CsvGenerator
 			var client = new MongoClient(connectionString);
 			var database = client.GetDatabase("fundamentalist");
 			// ImportSecData(edgarPath, database);
-			ImportPriceData(priceCsvPath, database);
+			// ImportPriceData(priceCsvPath, database);
+			// ImportIndexData(indexCsvPath, database);
+			ImportTickers(tickerCsvPath, database);
 		}
 
 		private void ImportSecData(string edgarPath, IMongoDatabase database)
 		{
-			const string CollectionName = "submissions";
-			database.DropCollection(CollectionName);
-			database.CreateCollection(CollectionName);
-			var collection = database.GetCollection<SecSubmission>(CollectionName);
+			database.DropCollection(SubmissionsCollection);
+			database.CreateCollection(SubmissionsCollection);
+			var collection = database.GetCollection<SecSubmission>(SubmissionsCollection);
 			var adshIndex = Builders<SecSubmission>.IndexKeys.Ascending(x => x.Form);
 			collection.Indexes.CreateOne(new CreateIndexModel<SecSubmission>(adshIndex));
 			var edgarFiles = Directory.GetFiles(edgarPath, "*.zip");
@@ -68,18 +71,13 @@ namespace Fundamentalist.CsvGenerator
 		private void ImportPriceData(string priceCsvPath, IMongoDatabase database)
 		{
 			using var timer = new PerformanceTimer("Importing price data", "Imported price data");
-			const string CollectionName = "prices";
-			database.DropCollection(CollectionName);
-			database.CreateCollection(CollectionName);
-			var collection = database.GetCollection<Price>(CollectionName);
+			database.DropCollection(PricesCollection);
+			database.CreateCollection(PricesCollection);
+			var collection = database.GetCollection<Price>(PricesCollection);
 			var tickerDateIndex = Builders<Price>.IndexKeys.Ascending(x => x.Ticker).Ascending(x => x.Date);
 			collection.Indexes.CreateOne(new CreateIndexModel<Price>(tickerDateIndex));
 			using var reader = new StreamReader(priceCsvPath);
-			var configuration = new CsvConfiguration(CultureInfo.InvariantCulture)
-			{
-				Delimiter = ","
-			};
-			using var csvReader = new CsvReader(reader, configuration);
+			using var csvReader = GetCsvReader(reader);
 			var decimalConverter = new PriceDecimalConverter();
 			var converterCache = csvReader.Context.TypeConverterCache;
 			converterCache.AddConverter<decimal>(decimalConverter);
@@ -88,7 +86,7 @@ namespace Fundamentalist.CsvGenerator
 			var batch = new List<Price>();
 			foreach (var priceRow in records)
 			{
-				if (priceRow.Date.Year < 2009 || !priceRow.Volume.HasValue)
+				if (priceRow.Date.Year < PriceMinimumYear || !priceRow.Volume.HasValue)
 					continue;
 				var priceData = new Price(priceRow);
 				batch.Add(priceData);
@@ -102,18 +100,67 @@ namespace Fundamentalist.CsvGenerator
 				collection.InsertMany(batch);
 		}
 
+		private void ImportIndexData(string indexCsvPath, IMongoDatabase database)
+		{
+			var collection = database.GetCollection<Price>(PricesCollection);
+			using var reader = new StreamReader(indexCsvPath);
+			using var csvReader = GetCsvReader(reader);
+			var records = csvReader.GetRecords<LegacyPriceRow>()
+				.Where(row => row.Date.Year >= PriceMinimumYear)
+				.Select(row => new Price(null, row));
+			collection.InsertMany(records);
+		}
+
+		private void ImportTickers(string tickerCsvPath, IMongoDatabase database)
+		{
+			using var timer = new PerformanceTimer("Importing ticker data", "Imported ticker data");
+			database.DropCollection(TickersCollection);
+			database.CreateCollection(TickersCollection);
+			var collection = database.GetCollection<TickerData>(TickersCollection);
+			var cikIndex = Builders<TickerData>.IndexKeys.Ascending(x => x.Cik);
+			collection.Indexes.CreateOne(new CreateIndexModel<TickerData>(cikIndex));
+			using var reader = new StreamReader(tickerCsvPath);
+			using var csvReader = GetCsvReader(reader);
+			var records = csvReader.GetRecords<TickerRow>();
+			var usedSymbols = new HashSet<string>();
+			var output = new List<TickerData>();
+			foreach (var row in records)
+			{
+				var ticker = new TickerData(row);
+				if (
+					usedSymbols.Contains(ticker.Ticker) ||
+					ticker.Country != "US" ||
+					!(
+						ticker.Category == "Domestic Common Stock" ||
+						ticker.Category == "Domestic Common Stock Primary Class" ||
+						ticker.Category == "Domestic Common Stock Secondary Class"
+					)
+				)
+					continue;
+				output.Add(ticker);
+				usedSymbols.Add(ticker.Ticker);
+			}
+			collection.InsertMany(output);
+		}
+
 		private List<T> GetRecords<T>(string filename, ZipArchive archive)
 		{
 			var sub = archive.GetEntry(filename);
 			using var stream = sub.Open();
 			using var reader = new StreamReader(stream);
-			var configuration = new CsvConfiguration(CultureInfo.InvariantCulture)
-			{
-				Delimiter = "\t"
-			};
-			using var csvReader = new CsvReader(reader, configuration);
+			using var csvReader = GetCsvReader(reader);
 			var records = csvReader.GetRecords<T>().ToList();
 			return records;
+		}
+
+		private CsvReader GetCsvReader(StreamReader reader)
+		{
+			var configuration = new CsvConfiguration(CultureInfo.InvariantCulture)
+			{
+				Delimiter = ","
+			};
+			var csvReader = new CsvReader(reader, configuration);
+			return csvReader;
 		}
 	}
 }
