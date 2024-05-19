@@ -9,7 +9,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Common", "Fu
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.Trainer", "Fundamentalist.Trainer\Fundamentalist.Trainer.csproj", "{D98D3494-2600-44A3-BC46-F2B918632030}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.CsvGenerator", "Fundamentalist.CsvGenerator\Fundamentalist.CsvGenerator.csproj", "{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.CsvImport", "Fundamentalist.CsvImport\Fundamentalist.CsvImport.csproj", "{5248C21B-417C-4A73-9A1E-2D2BC04A87E0}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Fundamentalist.SqlAnalysis", "Fundamentalist.SqlAnalysis\Fundamentalist.SqlAnalysis.csproj", "{6BB43D02-4A22-495C-80BC-5C738057329A}"
 EndProject

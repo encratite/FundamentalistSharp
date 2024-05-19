@@ -48,7 +48,7 @@ create table ticker
 	country varchar(50),
 	state varchar(50),
 	related_tickers varchar(300)
-);
+) engine = MyISAM;
 
 create index ticker_cik_index on ticker (cik);
 create index ticker_ticker_index on ticker (ticker);

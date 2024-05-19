@@ -16,11 +16,11 @@ namespace Fundamentalist.SqlAnalysis
 			using (var connection = new MySqlConnection(_configuration.ConnectionString))
 			{
 				connection.Open();
-				using (new PerformanceTimer("gathering single stats"))
+				using (new PerformanceTimer("Loading single stats", "Done loading single stats"))
 					singleTagStats = GetSingleTagStats(connection);
-				using (new PerformanceTimer("gathering revenue stats"))
+				using (new PerformanceTimer("Loading revenue stats", "Done loading revenue stats"))
 					revenueStats = GetTagRatioStats("Revenues", connection);
-				using (new PerformanceTimer("gathering asset stats"))
+				using (new PerformanceTimer("Loading asset stats", "Done loading asset stats"))
 					assetStats = GetTagRatioStats("Assets", connection);
 			}
 			

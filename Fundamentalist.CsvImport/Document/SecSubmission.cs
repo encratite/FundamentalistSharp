@@ -1,30 +1,25 @@
-﻿using CsvHelper.Configuration.Attributes;
+﻿using Fundamentalist.CsvGenerator.Csv;
+using MongoDB.Bson.Serialization.Attributes;
 
-namespace Fundamentalist.CsvGenerator.Csv
+namespace Fundamentalist.CsvGenerator.Document
 {
-	internal class SecSubmissionRow
+	internal class SecSubmission
 	{
-		[Name("adsh")]
+		[BsonId]
 		public string Adsh { get; set; }
-		[Name("cik")]
-		public int Cik { get; set; }
-		[Name("form")]
 		public string Form { get; set; }
-		[Name("period")]
-		public DateOnly? Period { get; set; }
-		[Name("fiscal_year")]
+		[BsonDateTimeOptions(DateOnly = true)]
+		public DateTime? Period { get; set; }
 		public int? FiscalYear { get; set; }
-		[Name("fiscal_period")]
 		public string FiscalPeriod { get; set; }
-		[Name("filed")]
-		public DateOnly Filed { get; set; }
-		[Name("accepted")]
+		[BsonDateTimeOptions(DateOnly = true)]
+		public DateTime Filed { get; set; }
 		public DateTime Accepted { get; set; }
+		public List<SecNumber> Numbers { get; set; } = new List<SecNumber>();
 
-		public SecSubmissionRow(SubmissionRow submission)
+		public SecSubmission(SubmissionRow submission)
 		{
 			Adsh = submission.Adsh;
-			Cik = submission.Cik;
 			Form = submission.Form;
 			Period = IntDate.Get(submission.Period);
 			int fiscalYear;

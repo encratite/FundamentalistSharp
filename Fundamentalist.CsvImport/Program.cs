@@ -6,20 +6,21 @@ namespace Fundamentalist.CsvGenerator
 	{
 		static void Main(string[] arguments)
 		{
-			if (arguments.Length != 2)
+			if (arguments.Length != 3)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
 				var name = assembly.GetName();
 				Console.WriteLine("Usage:");
-				Console.WriteLine($"{name.Name} <path to EDGAR zip files> <CSV output directory>");
+				Console.WriteLine($"{name.Name} <path to EDGAR zip files> <Sharadar price .csv> <MongoDB connection string>");
 				return;
 			}
 			int offset = 0;
 			Func<string> getArgument = () => arguments[offset++];
 			string edgarPath = getArgument();
-			string csvOutputDirectory = getArgument();
-			var generator = new CsvGenerator();
-			generator.WriteCsvFiles(edgarPath, csvOutputDirectory);
+			string priceCsvPath = getArgument();
+			string connectionString = getArgument();
+			var import = new CsvImport();
+			import.ImportCsvFiles(edgarPath, priceCsvPath, connectionString);
 		}
 	}
 }
