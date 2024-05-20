@@ -1,5 +1,4 @@
-﻿using Amazon.SecurityToken.Model;
-using Fundamentalist.Common;
+﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Document;
 using Fundamentalist.CsvImport.Document;
 using MongoDB.Bson.Serialization.Conventions;
@@ -12,6 +11,14 @@ namespace Fundamentalist.Analysis
 	{
 		private Configuration _configuration;
 
+		private IMongoCollection<SecSubmission> _submissions;
+		private IMongoCollection<TickerData> _tickers;
+		private IMongoCollection<Price> _prices;
+
+		private FilterDefinitionBuilder<SecSubmission> _submissionFilter = Builders<SecSubmission>.Filter;
+		private FilterDefinitionBuilder<TickerData> _tickerFilter = Builders<TickerData>.Filter;
+		private FilterDefinitionBuilder<Price> _priceFilter = Builders<Price>.Filter;
+
 		public void Run(Configuration configuration)
 		{
 			_configuration = configuration;
@@ -22,103 +29,168 @@ namespace Fundamentalist.Analysis
 			ConventionRegistry.Register(nameof(CamelCaseElementNameConvention), pack, _ => true);
 			var client = new MongoClient(_configuration.ConnectionString);
 			var database = client.GetDatabase("fundamentalist");
-			var singleTagStats = GetSingleTagStats(database);
+			_submissions = database.GetCollection<SecSubmission>("submissions");
+			_tickers = database.GetCollection<TickerData>("tickers");
+			_prices = database.GetCollection<Price>("prices");
+
+			var singleTagStats = GetTagStats(null, database);
+			var assetStats = GetTagStats("Assets", database);
+			var revenueStats = GetTagStats("Revenues", database);
 			using (var writer = new StreamWriter(_configuration.Output))
 			{
 				string json = JsonSerializer.Serialize(_configuration);
 				writer.WriteLine("Configuration used:");
 				writer.WriteLine(json);
-				WriteCoefficients("Single tags", singleTagStats, false, writer);
-				/*
-				WriteCoefficients("Revenue quotients", revenueStats, true, writer);
-				WriteCoefficients("Asset quotients", assetStats, true, writer);
-				*/
+				WriteCoefficients("Single tags", singleTagStats, writer);
+				WriteCoefficients("Revenue quotients", revenueStats, writer);
+				WriteCoefficients("Asset quotients", assetStats, writer);
 			}
 		}
 
-		private List<TagStats> GetSingleTagStats(IMongoDatabase database)
+		private List<TagStats> GetTagStats(string divisor, IMongoDatabase database)
 		{
-			using var timer = new PerformanceTimer("Calculating single tag stats", "Done calculating single tag stats");
-			var submissions = database.GetCollection<SecSubmission>("submissions");
-			var submissionFilter = Builders<SecSubmission>.Filter;
-			var tickers = database.GetCollection<TickerData>("tickers");
-			var tickerFilter = Builders<TickerData>.Filter;
-			var prices = database.GetCollection<Price>("prices");
+			string startMessage;
+			if (divisor == null)
+				startMessage = "Calculating single tag stats";
+			else
+				startMessage = $"Calculating tag quotient stats for divisor \"{divisor}\"";
+			string endMessage = "Done calculating tag stats";
+			using var timer = new PerformanceTimer(startMessage, endMessage);
 			var formFiledFilter =
-				submissionFilter.Eq(x => x.Form, _configuration.Form) &
-				submissionFilter.Gte(x => x.Filed, _configuration.From.Value) &
-				submissionFilter.Lt(x => x.Filed, _configuration.To.Value);
-			var filteredSubmission = submissions.Find(formFiledFilter).ToList();
+				_submissionFilter.Eq(x => x.Form, _configuration.Form) &
+				_submissionFilter.Gte(x => x.Filed, _configuration.From.Value) &
+				_submissionFilter.Lt(x => x.Filed, _configuration.To.Value);
+			var filteredSubmission = _submissions.Find(formFiledFilter).ToList();
 			var stats = new Dictionary<string, TagStats>();
 			foreach (var submission in filteredSubmission)
 			{
-				var cikFilter = tickerFilter.Eq(x => x.Cik, submission.Cik);
-				foreach (var ticker in tickers.Find(cikFilter).ToList())
-				{
-					if (ticker == null || ticker.MarketCap < 3)
-						continue;
-					var now = submission.Filed;
-					var future = submission.Filed.AddMonths(_configuration.Horizon.Value);
-					var price1 = GetClosePrice(ticker.Ticker, now, prices);
-					var price2 = GetClosePrice(ticker.Ticker, future, prices);
-					decimal priceQuotient;
-					if (price1.HasValue && price2.HasValue)
-						priceQuotient = price2.Value / price1.Value;
-					else
-						priceQuotient = 0m;
-					var indexPrice1 = GetClosePrice(null, now, prices);
-					var indexPrice2 = GetClosePrice(null, future, prices);
-					if (!indexPrice1.HasValue || !indexPrice2.HasValue)
-						continue;
-					decimal indexQuotient = indexPrice2.Value / indexPrice1.Value;
-					decimal performance = priceQuotient - indexQuotient;
-					var filteredNumbers = submission.Numbers.Where(x =>
-						x.Quarters == 0 ||
-						(
-							(_configuration.Form != "10-K" || x.Quarters == 4) &&
-							(_configuration.Form != "10-Q" || x.Quarters == 1)
-						)
-					).OrderByDescending(x => x.EndDate);
-					var usedTags = new HashSet<string>();
-					foreach (var number in filteredNumbers)
-					{
-						string unit = number.Unit;
-						if (
-							unit != "USD" &&
-							unit != "shares" &&
-							unit != "pure"
-						)
-							continue;
-						string tag = number.Tag;
-						if (usedTags.Contains(tag))
-							continue;
-						TagStats tagStats;
-						if (!stats.TryGetValue(tag, out tagStats))
-						{
-							tagStats = new TagStats(tag);
-							stats[tag] = tagStats;
-						}
-						var observation = new Observation(number.Value, performance);
-						tagStats.Observations.Add(observation);
-						usedTags.Add(tag);
-					}
-				}
+				var cikFilter = _tickerFilter.Eq(x => x.Cik, submission.Cik);
+				foreach (var ticker in _tickers.Find(cikFilter).ToList())
+					GetTickerStats(divisor, submission, ticker, stats);
 			}
-			var filteredTags = stats.Values.Where(x => x.Observations.Count >= _configuration.MinimumFrequency).ToList();
+			foreach (var tagStats in stats.Values)
+				tagStats.Frequency = (decimal)tagStats.Observations.Count / filteredSubmission.Count;
+			var filteredTags = stats.Values.Where(x => x.Frequency >= _configuration.MinimumFrequency).ToList();
 			Parallel.ForEach(filteredTags, stats =>
 			{
 				stats.SpearmanCoefficient = GetSpearmanCoefficient(stats.Observations);
-				stats.Covariance = GetCovariance(stats.Observations);
+				stats.PearsonCoefficient = GetPearsonCoefficient(stats.Observations);
 			});
 			return filteredTags;
 		}
 
-		private decimal? GetClosePrice(string ticker, DateTime date, IMongoCollection<Price> prices)
+		private void GetTickerStats(string divisor, SecSubmission submission, TickerData ticker, Dictionary<string, TagStats> stats)
+		{
+			if (ticker == null || ticker.MarketCap < _configuration.MinimumMarketCap)
+				return;
+			decimal? performance = GetPerformance(submission, ticker);
+			if (!performance.HasValue)
+				return;
+			var filteredNumbers = submission.Numbers
+				.Where(x => IsValidNumber(x, divisor))
+				.OrderByDescending(x => x.EndDate);
+			var usedTags = new HashSet<string>();
+			var dateFilteredNumbers = new List<SecNumber>();
+			foreach (var number in filteredNumbers)
+			{
+				string tag = number.Tag;
+				if (usedTags.Contains(tag))
+					continue;
+				dateFilteredNumbers.Add(number);
+				usedTags.Add(tag);
+			}
+			if (divisor == null)
+				AddSingleTagStats(performance, dateFilteredNumbers, stats);
+			else
+				AddQuotientTagStats(divisor, performance, dateFilteredNumbers, stats);
+		}
+
+		private void AddSingleTagStats(decimal? performance, List<SecNumber> dateFilteredNumbers, Dictionary<string, TagStats> stats)
+		{
+			foreach (var number in dateFilteredNumbers)
+			{
+				var tagStats = GetTagStats(number.Tag, stats);
+				var observation = new Observation(number.Value, performance.Value);
+				tagStats.Observations.Add(observation);
+			}
+		}
+
+		private void AddQuotientTagStats(string divisor, decimal? performance, List<SecNumber> dateFilteredNumbers, Dictionary<string, TagStats> stats)
+		{
+			var quotientNumber = dateFilteredNumbers.FirstOrDefault(x => x.Tag == divisor);
+			if (quotientNumber == null || quotientNumber.Value == 0m)
+				return;
+			foreach (var number in dateFilteredNumbers)
+			{
+				string tag = number.Tag;
+				if (tag == divisor)
+					continue;
+				var tagStats = GetTagStats(tag, stats);
+				decimal quotient = number.Value / quotientNumber.Value;
+				var observation = new Observation(quotient, performance.Value);
+				tagStats.Observations.Add(observation);
+			}
+		}
+
+		private TagStats GetTagStats(string tag, Dictionary<string, TagStats> stats)
+		{
+			TagStats tagStats;
+			if (!stats.TryGetValue(tag, out tagStats))
+			{
+				tagStats = new TagStats(tag);
+				stats[tag] = tagStats;
+			}
+			return tagStats;
+		}
+
+		private bool IsValidNumber(SecNumber number, string divisor)
+		{
+			bool isValidQuarter = number.Quarters == 0 ||
+			(
+				(_configuration.Form != "10-K" || number.Quarters == 4) &&
+				(_configuration.Form != "10-Q" || number.Quarters == 1)
+			);
+			if (!isValidQuarter)
+				return false;
+			string unit = number.Unit;
+			if (unit == "USD")
+				return true;
+			return
+				divisor == null &&
+				(
+					unit == "shares" ||
+					unit == "pure"
+				);
+		}
+
+		private decimal? GetPerformance(SecSubmission submission, TickerData ticker)
+		{
+			var now = submission.Filed;
+			var future = submission.Filed.AddMonths(_configuration.Horizon.Value);
+			var price1 = GetClosePrice(ticker.Ticker, now);
+			var price2 = GetClosePrice(ticker.Ticker, future);
+			decimal priceQuotient;
+			if (price1.HasValue && price2.HasValue)
+				priceQuotient = price2.Value / price1.Value;
+			else
+				priceQuotient = 0m;
+			var indexPrice1 = GetClosePrice(null, now);
+			var indexPrice2 = GetClosePrice(null, future);
+			if (!indexPrice1.HasValue || !indexPrice2.HasValue)
+				return null;
+			decimal indexQuotient = indexPrice2.Value / indexPrice1.Value;
+			decimal performance = priceQuotient - indexQuotient;
+			return performance;
+		}
+
+		private decimal? GetClosePrice(string ticker, DateTime date)
 		{
 			for (int i = 0; i <= 7; i++)
 			{
-				var filter = Builders<Price>.Filter.Eq(x => x.Ticker, ticker) & Builders<Price>.Filter.Eq(x => x.Date, date.AddDays(i));
-				var price = prices.Find(filter).FirstOrDefault();
+				var filter =
+					_priceFilter.Eq(x => x.Ticker, ticker) &
+					_priceFilter.Eq(x => x.Date, date.AddDays(i));
+				var price = _prices.Find(filter).FirstOrDefault();
 				if (price != null)
 					return price.Close;
 			}
@@ -140,23 +212,49 @@ namespace Fundamentalist.Analysis
 			return coefficient;
 		}
 
-		private decimal GetCovariance(List<Observation> observations)
+		private double GetPearsonCoefficient(List<Observation> observations)
 		{
-			decimal sum = 0;
-			var array = observations.ToArray();
-			for (int i = 0; i < array.Length; i++)
+			var xDeviations = GetDeviations(observations.Select(o => o.X));
+			var yDeviations = GetDeviations(observations.Select(o => o.Y));
+			double numerator = 0;
+			for (int i = 0; i < xDeviations.Length; i++)
+				numerator += (double)xDeviations[i] * (double)yDeviations[i];
+			double xRootSquareSum = GetRootSquareSum(xDeviations);
+			double yRootSquareSum = GetRootSquareSum(yDeviations);
+			double output = numerator / (xRootSquareSum * yRootSquareSum);
+			return output;
+		}
+
+		private decimal[] GetDeviations(IEnumerable<decimal> input)
+		{
+			decimal mean = GetMean(input);
+			var output = input.Select(x => x - mean).ToArray();
+			return output;
+		}
+
+		private decimal GetMean(IEnumerable<decimal> input)
+		{
+			int n = 0;
+			decimal sum = 0m;
+			foreach (decimal x in input)
 			{
-				for (int j = i + 1; j < array.Length; j++)
-				{
-					var o1 = array[i];
-					var o2 = array[j];
-					decimal dx = o1.X - o2.X;
-					decimal dy = o1.Y - o2.Y;
-					sum += dx * dy;
-				}
+				sum += x;
+				n++;
 			}
-			decimal covariance = sum / (array.Length * array.Length);
-			return covariance;
+			decimal mean = sum / n;
+			return mean;
+		}
+
+		private double GetRootSquareSum(IEnumerable<decimal> input)
+		{
+			double sum = 0;
+			foreach (var x in input)
+			{
+				double doubleX = (double)x;
+				sum += doubleX * doubleX;
+			}
+			double output = Math.Sqrt((double)sum);
+			return output;
 		}
 
 		private int[] GetRanks(List<Observation> observations, bool selectX)
@@ -167,7 +265,7 @@ namespace Fundamentalist.Analysis
 			return output;
 		}
 
-		private void WriteCoefficients(string title, List<TagStats> tags, bool enableCovariance, StreamWriter writer)
+		private void WriteCoefficients(string title, List<TagStats> tags, StreamWriter writer)
 		{
 			writer.WriteLine(string.Empty);
 			writer.WriteLine($"{title}:");
@@ -176,8 +274,8 @@ namespace Fundamentalist.Analysis
 			{
 				var statsStrings = new List<string>();
 				statsStrings.Add($"Spearman {stats.SpearmanCoefficient.Value:F3}");
-				if (enableCovariance)
-					statsStrings.Add($"covariance {stats.Covariance:F3}");
+				statsStrings.Add($"Pearson {stats.PearsonCoefficient:F3}");
+				statsStrings.Add($"frequency {stats.Frequency:P2}");
 				statsStrings.Add($"{stats.Observations.Count} samples");
 				writer.WriteLine($"{i}. {stats.Name} ({string.Join(", ", statsStrings)})");
 				i++;

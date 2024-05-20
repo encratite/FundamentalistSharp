@@ -7,7 +7,8 @@
 		public DateTime? From { get; set; }
 		public DateTime? To { get; set; }
 		public int? Horizon { get; set; }
-		public int? MinimumFrequency { get; set; }
+		public decimal? MinimumFrequency { get; set; }
+		public int? MinimumMarketCap { get; set; }
 		public string Output { get; set; }
 
 		public void Validate()
@@ -19,6 +20,7 @@
 				To.HasValue &&
 				Horizon.HasValue &&
 				MinimumFrequency.HasValue &&
+				MinimumMarketCap.HasValue &&
 				Output != null;
 			if (!valid)
 				throw new ApplicationException("Invalid configuration file");
