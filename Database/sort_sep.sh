@@ -1,1 +1,0 @@
-(tail -n +2 SHARADAR_SEP_2.csv | sort) > SHARADAR_SEP_SORTED.csv

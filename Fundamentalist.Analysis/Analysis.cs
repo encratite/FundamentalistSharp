@@ -81,7 +81,11 @@ namespace Fundamentalist.Analysis
 
 		private void GetTickerStats(string divisor, SecSubmission submission, TickerData ticker, Dictionary<string, TagStats> stats)
 		{
-			if (ticker == null || ticker.MarketCap < _configuration.MinimumMarketCap)
+			if (
+				ticker == null ||
+				ticker.MarketCap < _configuration.MinimumMarketCap ||
+				ticker.MarketCap > _configuration.MaximumMarketCap
+			)
 				return;
 			decimal? performance = GetPerformance(submission, ticker);
 			if (!performance.HasValue)
@@ -169,11 +173,9 @@ namespace Fundamentalist.Analysis
 			var future = submission.Filed.AddMonths(_configuration.Horizon.Value);
 			var price1 = GetClosePrice(ticker.Ticker, now);
 			var price2 = GetClosePrice(ticker.Ticker, future);
-			decimal priceQuotient;
-			if (price1.HasValue && price2.HasValue)
-				priceQuotient = price2.Value / price1.Value;
-			else
-				priceQuotient = 0m;
+			if (!price1.HasValue)
+				return null;
+			decimal priceQuotient = price2.HasValue ? price2.Value / price1.Value : 0m;
 			var indexPrice1 = GetClosePrice(null, now);
 			var indexPrice2 = GetClosePrice(null, future);
 			if (!indexPrice1.HasValue || !indexPrice2.HasValue)
@@ -270,11 +272,11 @@ namespace Fundamentalist.Analysis
 			writer.WriteLine(string.Empty);
 			writer.WriteLine($"{title}:");
 			int i = 1;
-			foreach (var stats in tags.OrderByDescending(x => x.SpearmanCoefficient.Value))
+			foreach (var stats in tags.OrderByDescending(x => x.PearsonCoefficient.Value))
 			{
 				var statsStrings = new List<string>();
-				statsStrings.Add($"Spearman {stats.SpearmanCoefficient.Value:F3}");
 				statsStrings.Add($"Pearson {stats.PearsonCoefficient:F3}");
+				statsStrings.Add($"Spearman {stats.SpearmanCoefficient.Value:F3}");
 				statsStrings.Add($"frequency {stats.Frequency:P2}");
 				statsStrings.Add($"{stats.Observations.Count} samples");
 				writer.WriteLine($"{i}. {stats.Name} ({string.Join(", ", statsStrings)})");

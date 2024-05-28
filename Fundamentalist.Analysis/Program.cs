@@ -24,6 +24,7 @@ namespace Fundamentalist.Analysis
 			configuration.Validate();
 			var sqlAnalysis = new Analysis();
 			sqlAnalysis.Run(configuration);
+			Console.Beep();
 		}
 	}
 }

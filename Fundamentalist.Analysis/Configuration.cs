@@ -9,6 +9,7 @@
 		public int? Horizon { get; set; }
 		public decimal? MinimumFrequency { get; set; }
 		public int? MinimumMarketCap { get; set; }
+		public int? MaximumMarketCap { get; set; }
 		public string Output { get; set; }
 
 		public void Validate()
@@ -21,6 +22,7 @@
 				Horizon.HasValue &&
 				MinimumFrequency.HasValue &&
 				MinimumMarketCap.HasValue &&
+				MaximumMarketCap.HasValue &&
 				Output != null;
 			if (!valid)
 				throw new ApplicationException("Invalid configuration file");
