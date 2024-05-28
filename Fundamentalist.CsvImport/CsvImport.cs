@@ -4,10 +4,6 @@ using Fundamentalist.Common;
 using Fundamentalist.Common.Document;
 using Fundamentalist.CsvImport.Csv;
 using Fundamentalist.CsvImport.Document;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization;
-using MongoDB.Bson.Serialization.Conventions;
-using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
 using System.Globalization;
 using System.IO.Compression;
@@ -19,34 +15,34 @@ namespace Fundamentalist.CsvImport
 		private const string SubmissionsCollection = "submissions";
 		private const string PricesCollection = "prices";
 		private const string TickersCollection = "tickers";
+		private const string IndexComponentsCollection = "indexComponents";
 
-		private const int PriceMinimumYear = 2009;
+		private Configuration _configuration;
+		private IMongoDatabase _database;
 
-		public void ImportCsvFiles(string edgarPath, string priceCsvPath, string indexCsvPath, string tickerCsvPath, string connectionString)
+		public CsvImport(Configuration configuration)
 		{
-			var pack = new ConventionPack
-			{
-				new CamelCaseElementNameConvention()
-			};
-			ConventionRegistry.Register(nameof(CamelCaseElementNameConvention), pack, _ => true);
-			BsonSerializer.RegisterSerializer(typeof(decimal), new DecimalSerializer(BsonType.Decimal128));
-			BsonSerializer.RegisterSerializer(typeof(decimal?), new NullableSerializer<decimal>(new DecimalSerializer(BsonType.Decimal128)));
-			var client = new MongoClient(connectionString);
-			var database = client.GetDatabase("fundamentalist");
-			ImportSecData(edgarPath, database);
-			ImportPriceData(priceCsvPath, database);
-			ImportIndexData(indexCsvPath, database);
-			ImportTickers(tickerCsvPath, database);
+			_configuration = configuration;
 		}
 
-		private void ImportSecData(string edgarPath, IMongoDatabase database)
+		public void Import()
 		{
-			database.DropCollection(SubmissionsCollection);
-			database.CreateCollection(SubmissionsCollection);
-			var collection = database.GetCollection<SecSubmission>(SubmissionsCollection);
+			_database = Utility.GetMongoDatabase(_configuration.ConnectionString);
+			// ImportSecData();
+			// ImportPriceData();
+			// ImportIndexPriceData();
+			ImportIndexComponents();
+			// ImportTickers();
+		}
+
+		private void ImportSecData()
+		{
+			_database.DropCollection(SubmissionsCollection);
+			_database.CreateCollection(SubmissionsCollection);
+			var collection = _database.GetCollection<SecSubmission>(SubmissionsCollection);
 			var adshIndex = Builders<SecSubmission>.IndexKeys.Ascending(x => x.Form);
 			collection.Indexes.CreateOne(new CreateIndexModel<SecSubmission>(adshIndex));
-			var edgarFiles = Directory.GetFiles(edgarPath, "*.zip");
+			var edgarFiles = Directory.GetFiles(_configuration.EdgarPath, "*.zip");
 			foreach (string path in edgarFiles)
 			{
 				using var timer = new PerformanceTimer($"Processing {path}", "Processed archive");
@@ -69,15 +65,15 @@ namespace Fundamentalist.CsvImport
 			}
 		}
 
-		private void ImportPriceData(string priceCsvPath, IMongoDatabase database)
+		private void ImportPriceData()
 		{
 			using var timer = new PerformanceTimer("Importing price data", "Imported price data");
-			database.DropCollection(PricesCollection);
-			database.CreateCollection(PricesCollection);
-			var collection = database.GetCollection<Price>(PricesCollection);
+			_database.DropCollection(PricesCollection);
+			_database.CreateCollection(PricesCollection);
+			var collection = _database.GetCollection<Price>(PricesCollection);
 			var tickerDateIndex = Builders<Price>.IndexKeys.Ascending(x => x.Ticker).Ascending(x => x.Date);
 			collection.Indexes.CreateOne(new CreateIndexModel<Price>(tickerDateIndex));
-			using var reader = new StreamReader(priceCsvPath);
+			using var reader = new StreamReader(_configuration.PriceCsvPath);
 			using var csvReader = GetCsvReader(reader);
 			var decimalConverter = new PriceDecimalConverter();
 			var converterCache = csvReader.Context.TypeConverterCache;
@@ -87,7 +83,7 @@ namespace Fundamentalist.CsvImport
 			var batch = new List<Price>();
 			foreach (var priceRow in records)
 			{
-				if (priceRow.Date.Year < PriceMinimumYear || !priceRow.Volume.HasValue)
+				if (!priceRow.Volume.HasValue)
 					continue;
 				var priceData = priceRow.GetPrice();
 				batch.Add(priceData);
@@ -101,26 +97,35 @@ namespace Fundamentalist.CsvImport
 				collection.InsertMany(batch);
 		}
 
-		private void ImportIndexData(string indexCsvPath, IMongoDatabase database)
+		private void ImportIndexPriceData()
 		{
-			var collection = database.GetCollection<Price>(PricesCollection);
-			using var reader = new StreamReader(indexCsvPath);
+			var collection = _database.GetCollection<Price>(PricesCollection);
+			using var reader = new StreamReader(_configuration.IndexPriceCsvPath);
 			using var csvReader = GetCsvReader(reader);
 			var records = csvReader.GetRecords<LegacyPriceRow>()
-				.Where(row => row.Date.Year >= PriceMinimumYear)
 				.Select(row => row.GetPrice(null));
 			collection.InsertMany(records);
 		}
 
-		private void ImportTickers(string tickerCsvPath, IMongoDatabase database)
+		private void ImportIndexComponents()
+		{
+			var collection = _database.GetCollection<IndexComponents>(IndexComponentsCollection);
+			using var reader = new StreamReader(_configuration.IndexPriceCsvPath);
+			using var csvReader = GetCsvReader(reader);
+			var records = csvReader.GetRecords<IndexComponentsRow>()
+				.Select(row => row.GetIndexComponents());
+			collection.InsertMany(records);
+		}
+
+		private void ImportTickers()
 		{
 			using var timer = new PerformanceTimer("Importing ticker data", "Imported ticker data");
-			database.DropCollection(TickersCollection);
-			database.CreateCollection(TickersCollection);
-			var collection = database.GetCollection<TickerData>(TickersCollection);
+			_database.DropCollection(TickersCollection);
+			_database.CreateCollection(TickersCollection);
+			var collection = _database.GetCollection<TickerData>(TickersCollection);
 			var cikIndex = Builders<TickerData>.IndexKeys.Ascending(x => x.Cik);
 			collection.Indexes.CreateOne(new CreateIndexModel<TickerData>(cikIndex));
-			using var reader = new StreamReader(tickerCsvPath);
+			using var reader = new StreamReader(_configuration.TickerCsvPath);
 			using var csvReader = GetCsvReader(reader);
 			var records = csvReader.GetRecords<TickerRow>();
 			var usedSymbols = new HashSet<string>();

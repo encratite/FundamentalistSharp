@@ -1,7 +1,7 @@
 ﻿using System.Reflection;
 using System.Text.Json;
 
-namespace Fundamentalist.Analysis
+namespace Fundamentalist.Backtest
 {
 	internal class Program
 	{
@@ -22,8 +22,8 @@ namespace Fundamentalist.Analysis
 			};
 			var configuration = JsonSerializer.Deserialize<Configuration>(jsonConfiguration, options);
 			configuration.Validate();
-			var analysis = new Analysis();
-			analysis.Run(configuration);
+			var backtest = new Backtest();
+			backtest.Run(configuration);
 		}
 	}
 }
