@@ -28,11 +28,11 @@ namespace Fundamentalist.CsvImport
 		public void Import()
 		{
 			_database = Utility.GetMongoDatabase(_configuration.ConnectionString);
-			// ImportSecData();
-			// ImportPriceData();
-			// ImportIndexPriceData();
+			ImportSecData();
+			ImportPriceData();
+			ImportIndexPriceData();
 			ImportIndexComponents();
-			// ImportTickers();
+			ImportTickers();
 		}
 
 		private void ImportSecData()
@@ -109,12 +109,17 @@ namespace Fundamentalist.CsvImport
 
 		private void ImportIndexComponents()
 		{
+			_database.DropCollection(IndexComponentsCollection);
+			_database.CreateCollection(IndexComponentsCollection);
 			var collection = _database.GetCollection<IndexComponents>(IndexComponentsCollection);
-			using var reader = new StreamReader(_configuration.IndexPriceCsvPath);
+			using var reader = new StreamReader(_configuration.IndexComponentsCsvPath);
 			using var csvReader = GetCsvReader(reader);
-			var records = csvReader.GetRecords<IndexComponentsRow>()
-				.Select(row => row.GetIndexComponents());
-			collection.InsertMany(records);
+			var records = csvReader.GetRecords<IndexComponentsRow>();
+			// Eliminate duplicate dates, can't really deal with those anyway
+			var documents = new Dictionary<DateTime, IndexComponents>();
+			foreach (var record in records)
+				documents[record.Date] = record.GetIndexComponents();
+			collection.InsertMany(documents.Values);
 		}
 
 		private void ImportTickers()
