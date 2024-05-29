@@ -12,11 +12,6 @@ namespace Fundamentalist.CsvImport
 {
 	internal class CsvImport
 	{
-		private const string SubmissionsCollection = "submissions";
-		private const string PricesCollection = "prices";
-		private const string TickersCollection = "tickers";
-		private const string IndexComponentsCollection = "indexComponents";
-
 		private Configuration _configuration;
 		private IMongoDatabase _database;
 
@@ -37,9 +32,9 @@ namespace Fundamentalist.CsvImport
 
 		private void ImportSecData()
 		{
-			_database.DropCollection(SubmissionsCollection);
-			_database.CreateCollection(SubmissionsCollection);
-			var collection = _database.GetCollection<SecSubmission>(SubmissionsCollection);
+			_database.DropCollection(Collection.Submissions);
+			_database.CreateCollection(Collection.Submissions);
+			var collection = _database.GetCollection<SecSubmission>(Collection.Submissions);
 			var adshIndex = Builders<SecSubmission>.IndexKeys.Ascending(x => x.Form);
 			collection.Indexes.CreateOne(new CreateIndexModel<SecSubmission>(adshIndex));
 			var edgarFiles = Directory.GetFiles(_configuration.EdgarPath, "*.zip");
@@ -68,9 +63,9 @@ namespace Fundamentalist.CsvImport
 		private void ImportPriceData()
 		{
 			using var timer = new PerformanceTimer("Importing price data", "Imported price data");
-			_database.DropCollection(PricesCollection);
-			_database.CreateCollection(PricesCollection);
-			var collection = _database.GetCollection<Price>(PricesCollection);
+			_database.DropCollection(Collection.Prices);
+			_database.CreateCollection(Collection.Prices);
+			var collection = _database.GetCollection<Price>(Collection.Prices);
 			var tickerDateIndex = Builders<Price>.IndexKeys.Ascending(x => x.Ticker).Ascending(x => x.Date);
 			collection.Indexes.CreateOne(new CreateIndexModel<Price>(tickerDateIndex));
 			using var reader = new StreamReader(_configuration.PriceCsvPath);
@@ -99,7 +94,7 @@ namespace Fundamentalist.CsvImport
 
 		private void ImportIndexPriceData()
 		{
-			var collection = _database.GetCollection<Price>(PricesCollection);
+			var collection = _database.GetCollection<Price>(Collection.Prices);
 			using var reader = new StreamReader(_configuration.IndexPriceCsvPath);
 			using var csvReader = GetCsvReader(reader);
 			var records = csvReader.GetRecords<LegacyPriceRow>()
@@ -109,9 +104,11 @@ namespace Fundamentalist.CsvImport
 
 		private void ImportIndexComponents()
 		{
-			_database.DropCollection(IndexComponentsCollection);
-			_database.CreateCollection(IndexComponentsCollection);
-			var collection = _database.GetCollection<IndexComponents>(IndexComponentsCollection);
+			_database.DropCollection(Collection.IndexComponents);
+			_database.CreateCollection(Collection.IndexComponents);
+			var collection = _database.GetCollection<IndexComponents>(Collection.IndexComponents);
+			var dateIndex = Builders<IndexComponents>.IndexKeys.Descending(x => x.Date);
+			collection.Indexes.CreateOne(new CreateIndexModel<IndexComponents>(dateIndex));
 			using var reader = new StreamReader(_configuration.IndexComponentsCsvPath);
 			using var csvReader = GetCsvReader(reader);
 			var records = csvReader.GetRecords<IndexComponentsRow>();
@@ -125,9 +122,9 @@ namespace Fundamentalist.CsvImport
 		private void ImportTickers()
 		{
 			using var timer = new PerformanceTimer("Importing ticker data", "Imported ticker data");
-			_database.DropCollection(TickersCollection);
-			_database.CreateCollection(TickersCollection);
-			var collection = _database.GetCollection<TickerData>(TickersCollection);
+			_database.DropCollection(Collection.Tickers);
+			_database.CreateCollection(Collection.Tickers);
+			var collection = _database.GetCollection<TickerData>(Collection.Tickers);
 			var cikIndex = Builders<TickerData>.IndexKeys.Ascending(x => x.Cik);
 			collection.Indexes.CreateOne(new CreateIndexModel<TickerData>(cikIndex));
 			using var reader = new StreamReader(_configuration.TickerCsvPath);

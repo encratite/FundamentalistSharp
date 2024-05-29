@@ -23,7 +23,7 @@ namespace Fundamentalist.Backtest
 			var configuration = JsonSerializer.Deserialize<Configuration>(jsonConfiguration, options);
 			configuration.Validate();
 			var backtest = new Backtest();
-			backtest.Run(configuration);
+			// backtest.Run(configuration);
 		}
 	}
 }
