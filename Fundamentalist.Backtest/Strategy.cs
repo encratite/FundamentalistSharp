@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+﻿using Fundamentalist.Common.Document;
+using System.Collections.ObjectModel;
 
 namespace Fundamentalist.Backtest
 {
@@ -34,14 +35,14 @@ namespace Fundamentalist.Backtest
 			return _backtest.GetClosePrice(ticker, day);
 		}
 
-		protected SortedList<DateTime, decimal> GetClosePrices(string ticker, DateTime from, DateTime to)
+		protected List<Price> GetPrices(string ticker, DateTime from, DateTime to)
 		{
-			return _backtest.GetClosePrices(ticker, from, to);
+			return _backtest.GetPrices(ticker, from, to);
 		}
 
-		protected Dictionary<string, SortedList<DateTime, decimal>> GetClosePrices(IEnumerable<string> tickers, DateTime from, DateTime to)
+		protected Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, DateTime to)
 		{
-			return _backtest.GetClosePrices(tickers, from, to);
+			return _backtest.GetPrices(tickers, from, to);
 		}
 
 		protected long? GetBuyCount(string ticker, decimal targetSize)

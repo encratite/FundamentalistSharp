@@ -73,28 +73,39 @@ namespace Fundamentalist.Backtest
 			if (day == _now)
 				throw new ApplicationException("Retrieving the close price of the current day is not permitted");
 			var price = GetPrice(ticker, day);
-			return price?.Close;
+			return price?.UnadjustedClose;
 		}
 
-		public SortedList<DateTime, decimal> GetClosePrices(string ticker, DateTime from, DateTime to)
+		public List<Price> GetPrices(string ticker, DateTime from, DateTime to)
 		{
-			var prices = GetPrices(ticker, from, to);
-			var output = new SortedList<DateTime, decimal>();
-			foreach (var price in prices)
-				output[price.Date] = price.UnadjustedClose.Value;
+			CheckFromTo(from, to);
+			var filter =
+				Builders<Price>.Filter.Eq(x => x.Ticker, ticker) &
+				Builders<Price>.Filter.Gte(x => x.Date, from) &
+				Builders<Price>.Filter.Lt(x => x.Date, to);
+			var output = _prices.Find(filter).ToList();
 			return output;
 		}
 
-		public Dictionary<string, SortedList<DateTime, decimal>> GetClosePrices(IEnumerable<string> tickers, DateTime from, DateTime to)
+		public Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, DateTime to)
 		{
-			var prices = GetPrices(tickers, from, to);
-			var output = new Dictionary<string, SortedList<DateTime, decimal>>();
-			foreach (var pair in prices)
+			CheckFromTo(from, to);
+			var filter =
+				Builders<Price>.Filter.In(x => x.Ticker, tickers) &
+				Builders<Price>.Filter.Gte(x => x.Date, from) &
+				Builders<Price>.Filter.Lt(x => x.Date, to);
+			var prices = _prices.Find(filter).ToList();
+			var output = new Dictionary<string, List<Price>>();
+			foreach (var price in prices)
 			{
-				var closePrices = new SortedList<DateTime, decimal>();
-				foreach (var price in pair.Value)
-					closePrices[price.Date] = price.UnadjustedClose.Value;
-				output[pair.Key] = closePrices;
+				List<Price> tickerPrices;
+				string key = price.Ticker;
+				if (!output.TryGetValue(key, out tickerPrices))
+				{
+					tickerPrices = new List<Price>();
+					output[key] = tickerPrices;
+				}
+				tickerPrices.Add(price);
 			}
 			return output;
 		}
@@ -163,51 +174,15 @@ namespace Fundamentalist.Backtest
 
 		private Price GetPrice(string ticker, DateTime day)
 		{
-			CheckDate(day, false);
+			CheckDate(day);
 			var filter = Builders<Price>.Filter.Eq(x => x.Ticker, ticker) & Builders<Price>.Filter.Eq(x => x.Date, day);
 			var price = _prices.Find(filter).FirstOrDefault();
 			return price;
 		}
 
-		private List<Price> GetPrices(string ticker, DateTime from, DateTime to)
+		private void CheckDate(DateTime day)
 		{
-			CheckFromTo(from, to);
-			CheckDate(to, true);
-			var filter =
-				Builders<Price>.Filter.Eq(x => x.Ticker, ticker) &
-				Builders<Price>.Filter.Gte(x => x.Date, from) &
-				Builders<Price>.Filter.Lt(x => x.Date, to);
-			var output = _prices.Find(filter).ToList();
-			return output;
-		}
-
-		private Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, DateTime to)
-		{
-			CheckFromTo(from, to);
-			CheckDate(to, true);
-			var filter =
-				Builders<Price>.Filter.In(x => x.Ticker, tickers) &
-				Builders<Price>.Filter.Gte(x => x.Date, from) &
-				Builders<Price>.Filter.Lt(x => x.Date, to);
-			var prices = _prices.Find(filter).ToList();
-			var output = new Dictionary<string, List<Price>>();
-			foreach (var price in prices)
-			{
-				List<Price> tickerPrices;
-				string key = price.Ticker;
-				if (!output.TryGetValue(key, out tickerPrices))
-				{
-					tickerPrices = new List<Price>();
-					output[key] = tickerPrices;
-				}
-				tickerPrices.Add(price);
-			}
-			return output;
-		}
-
-		private void CheckDate(DateTime day, bool greaterOrEqual)
-		{
-			if (day > _now || (greaterOrEqual && day == _now))
+			if (day > _now)
 				throw new ApplicationException("Reading price data from the future is not permitted");
 		}
 

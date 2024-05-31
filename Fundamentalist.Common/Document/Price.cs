@@ -19,7 +19,23 @@ namespace Fundamentalist.Common.Document
 
 		public decimal GetUnadjustedOpen()
 		{
-			return Open / Close * AdjustedClose;
+			return Adjust(Open);
+		}
+
+		public decimal GetUnadjustedHigh()
+		{
+			return Adjust(High);
+		}
+
+		public decimal GetUnadjustedClose()
+		{
+			return Adjust(Close);
+		}
+
+		private decimal Adjust(decimal value)
+		{
+			decimal ratio = UnadjustedClose.Value / Close;
+			return value * ratio;
 		}
 	}
 }
