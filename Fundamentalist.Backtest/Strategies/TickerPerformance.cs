@@ -8,19 +8,22 @@ namespace Fundamentalist.Backtest.Strategies
 		public List<Price> Prices { get; set; }
 		public double? AdjustedSlope { get; set; }
 		public double? MovingAverage { get; set; }
-		public decimal? AverageTrueRange { get; set; }
+		public decimal LargestGap { get; set; }
+		public decimal AverageTrueRange { get; set; }
 
-		public TickerPerformance(string ticker, List<Price> prices, int slopeDays, int movingAverageDays)
+		public TickerPerformance(string ticker, List<Price> prices, ClenowMomentumConfiguration configuration)
 		{
 			Ticker = ticker;
 			Prices = prices;
-			AdjustedSlope = GetAdjustedSlope(slopeDays);
-			MovingAverage = GetMovingAverage(movingAverageDays);
+			AdjustedSlope = GetAdjustedSlope(configuration.RegressionSlopeDays);
+			MovingAverage = GetMovingAverage(configuration.StockMovingAverageDays);
+			LargestGap = GetLargestGap(configuration.RegressionSlopeDays);
+			AverageTrueRange = GetAverageTrueRange(configuration.AverageTrueRangeDays);
 		}
 
 		public decimal GetLastClose()
 		{
-			return Prices.Last().UnadjustedClose.Value;
+			return Prices.Last().Close;
 		}
 
 		private double? GetAdjustedSlope(int slopeDays)
@@ -56,7 +59,7 @@ namespace Fundamentalist.Backtest.Strategies
 				.AsEnumerable()
 				.Reverse()
 				.Take(count)
-				.Select(x => x.UnadjustedClose.Value)
+				.Select(x => x.Close)
 				.ToList();
 		}
 
@@ -104,6 +107,46 @@ namespace Fundamentalist.Backtest.Strategies
 			}
 			double r2 = numerator / denominator;
 			return r2;
+		}
+
+		private decimal GetLargestGap(int slopeDays)
+		{
+			decimal reference = GetLastClose();
+			decimal largestGap = 0;
+			var prices = Prices.TakeLast(slopeDays);
+			foreach (var price in prices)
+			{
+				var values = new decimal[]
+				{
+					price.Open,
+					price.High,
+					price.Low,
+					price.Close
+				};
+				foreach (decimal value in values)
+				{
+					decimal gap = Math.Abs(value / reference - 1);
+					largestGap = Math.Max(gap, largestGap);
+				}
+			}
+			return largestGap;
+		}
+
+		private decimal GetAverageTrueRange(int averageTrueRangeDays)
+		{
+			var prices = Prices.TakeLast(averageTrueRangeDays + 1).ToArray();
+			decimal sum = 0;
+			for (int i = 1; i < prices.Length; i++)
+			{
+				var current = prices[i];
+				var previous = prices[i - 1];
+				decimal trueRange = current.High - current.Low;
+				trueRange = Math.Max(Math.Abs(current.High - previous.Close), trueRange);
+				trueRange = Math.Max(Math.Abs(current.Low - previous.Close), trueRange);
+				sum += trueRange;
+			}
+			decimal averageTrueRange = sum / averageTrueRangeDays;
+			return averageTrueRange;
 		}
 	}
 }

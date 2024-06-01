@@ -17,7 +17,7 @@ namespace Fundamentalist.Backtest
 			get => _cash.Value;
 		}
 
-		public ReadOnlyCollection<StockPosition> Positions
+		public ReadOnlyDictionary<string, StockPosition> Positions
 		{
 			get => _positions.AsReadOnly();
 		}
@@ -28,7 +28,7 @@ namespace Fundamentalist.Backtest
 
 		private DateTime? _now;
 		private decimal? _cash;
-		private List<StockPosition> _positions;
+		private Dictionary<string, StockPosition> _positions;
 
 		private SortedList<DateTime, Price> _indexPrices;
 
@@ -39,7 +39,7 @@ namespace Fundamentalist.Backtest
 			_prices = database.GetCollection<Price>(Collection.Prices);
 			_indexComponents = database.GetCollection<IndexComponents>(Collection.IndexComponents);
 			_cash = _configuration.Cash;
-			_positions = new List<StockPosition>();
+			_positions = new Dictionary<string, StockPosition>();
 
 			LoadIndexPriceData();
 			_now = GetNextTradingDay(_configuration.From.Value);
@@ -64,8 +64,7 @@ namespace Fundamentalist.Backtest
 			var price = GetPrice(ticker, day);
 			if (price == null)
 				return null;
-			decimal open = price.GetUnadjustedOpen();
-			return open;
+			return price.Open;
 		}
 
 		public decimal? GetClosePrice(string ticker, DateTime day)
@@ -73,7 +72,7 @@ namespace Fundamentalist.Backtest
 			if (day == _now)
 				throw new ApplicationException("Retrieving the close price of the current day is not permitted");
 			var price = GetPrice(ticker, day);
-			return price?.UnadjustedClose;
+			return price?.Close;
 		}
 
 		public List<Price> GetPrices(string ticker, DateTime from, DateTime to)
@@ -120,7 +119,7 @@ namespace Fundamentalist.Backtest
 			return count;
 		}
 
-		public void Buy(string ticker, long count)
+		public bool Buy(string ticker, long count)
 		{
 			var price = GetPrice(ticker, _now.Value);
 			if (price == null)
@@ -128,28 +127,40 @@ namespace Fundamentalist.Backtest
 			decimal ask = GetAsk(price);
 			decimal total = count * ask;
 			if (total > _cash)
-				throw new ApplicationException("Not enough money to buy this stock");
-			decimal open = price.GetUnadjustedOpen();
-			var position = new StockPosition(ticker, open, count);
-			_positions.Add(position);
+				return false;
+			StockPosition position;
+			if (!_positions.TryGetValue(ticker, out position))
+			{
+				position = new StockPosition(ticker, count);
+				_positions[ticker] = position;
+			}
+			else
+				position.Count += count;
 			_cash -= total;
+			return true;
 		}
 
-		public void Sell(StockPosition position)
+		public void Sell(string ticker, long count)
 		{
-			var price = GetPrice(position.Ticker, _now.Value);
+			StockPosition position;
+			if (!_positions.TryGetValue(ticker, out position))
+				throw new ApplicationException("Unable to find ticker in positions");
+			if (position.Count < count)
+				throw new ApplicationException("Not enough shares available");
+			var price = GetPrice(ticker, _now.Value);
 			if (price == null)
 				throw new ApplicationException("Unable to sell stock due to lack of price data");
-			decimal bid = price.GetUnadjustedOpen();
+			decimal bid = price.Open;
 			decimal total = position.Count * bid;
-			_positions.Remove(position);
+			position.Count -= count;
+			if (position.Count == 0)
+				_positions.Remove(ticker);
 			_cash += total;
 		}
 
 		private decimal GetAsk(Price price)
 		{
-			decimal open = price.GetUnadjustedOpen();
-			decimal ask = open * (1 + _configuration.Spread.Value);
+			decimal ask = price.Open * (1 + _configuration.Spread.Value);
 			return ask;
 		}
 

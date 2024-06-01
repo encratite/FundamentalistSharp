@@ -2,7 +2,7 @@
 {
 	internal class ClenowMomentumConfiguration
 	{
-		// Range: 7 - 28
+		public int SellDays { get; set; } = 7;
 		public int RebalanceDays { get; set; } = 14;
 		public int IndexMovingAverageDays { get; set; } = 200;
 		public int IndexRankFilter { get; set; } = 100;

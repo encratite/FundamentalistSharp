@@ -18,7 +18,7 @@ namespace Fundamentalist.Backtest
 
 		protected decimal Cash => _backtest.Cash;
 
-		protected ReadOnlyCollection<StockPosition> Positions => _backtest.Positions;
+		protected ReadOnlyDictionary<string, StockPosition> Positions => _backtest.Positions;
 
 		protected List<string> GetIndexComponents()
 		{
@@ -50,14 +50,14 @@ namespace Fundamentalist.Backtest
 			return _backtest.GetBuyCount(ticker, targetSize);
 		}
 
-		protected void Buy(string ticker, long count)
+		protected bool Buy(string ticker, long count)
 		{
-			_backtest.Buy(ticker, count);
+			return _backtest.Buy(ticker, count);
 		}
 
-		protected void Sell(StockPosition position)
+		protected void Sell(string ticker, long count)
 		{
-			_backtest.Sell(position);
+			_backtest.Sell(ticker, count);
 		}
 	}
 }

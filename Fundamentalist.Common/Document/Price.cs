@@ -16,26 +16,5 @@ namespace Fundamentalist.Common.Document
 		public decimal Volume { get; set; }
 		public decimal AdjustedClose { get; set; }
 		public decimal? UnadjustedClose { get; set; }
-
-		public decimal GetUnadjustedOpen()
-		{
-			return Adjust(Open);
-		}
-
-		public decimal GetUnadjustedHigh()
-		{
-			return Adjust(High);
-		}
-
-		public decimal GetUnadjustedClose()
-		{
-			return Adjust(Close);
-		}
-
-		private decimal Adjust(decimal value)
-		{
-			decimal ratio = UnadjustedClose.Value / Close;
-			return value * ratio;
-		}
 	}
 }
