@@ -26,11 +26,11 @@
 			if (!rebalance)
 				return;
 			decimal accountValue = GetAccountValue();
-			Rebalance(true, tickerRanking, accountValue);
-			Rebalance(false, tickerRanking, accountValue);
+			Rebalance(true, accountValue, tickerRanking);
+			Rebalance(false, accountValue, tickerRanking);
 			if (!IsBullMarket())
 				return;
-			throw new NotImplementedException();
+			BuyStocks(accountValue, tickerRanking);
 		}
 
 		private bool TimeExceeded(int days, ref DateTime? date)
@@ -79,12 +79,12 @@
 			return accountValue;
 		}
 
-		private void Rebalance(bool sell, List<TickerPerformance> tickerRanking, decimal accountValue)
+		private void Rebalance(bool sell, decimal accountValue, List<TickerPerformance> tickerRanking)
 		{
 			foreach (var position in Positions.Values)
 			{
 				var ranking = tickerRanking.First(x => x.Ticker == position.Ticker);
-				long shares = (long)Math.Round(accountValue * _configuration.RiskFactor / ranking.AverageTrueRange);
+				long shares = GetPositionShares(accountValue, ranking);
 				long difference = shares - position.Count;
 				if (sell && difference < 0)
 					Sell(position.Ticker, -difference);
@@ -93,10 +93,42 @@
 			}
 		}
 
+		private long GetPositionShares(decimal accountValue, TickerPerformance ranking)
+		{
+			long shares = (long)Math.Round(accountValue * _configuration.RiskFactor / ranking.AverageTrueRange);
+			return shares;
+		}
+
 		private bool IsBullMarket()
 		{
 			var indexPrices = GetPrices((string)null, Now.AddDays(-_configuration.IndexMovingAverageDays), Now);
-			throw new NotImplementedException();
+			decimal sum = 0;
+			foreach (var price in indexPrices)
+				sum += price.Close;
+			decimal movingAverage = sum / indexPrices.Count;
+			decimal finalClose = indexPrices.Last().Close;
+			bool isBullMarket = finalClose > movingAverage;
+			return isBullMarket;
+		}
+
+		private void BuyStocks(decimal accountValue, List<TickerPerformance> tickerRanking)
+		{
+			foreach (var ranking in tickerRanking)
+			{
+				if (Positions.ContainsKey(ranking.Ticker))
+					continue;
+				long shares = GetPositionShares(accountValue, ranking);
+				if (shares == 0)
+					break;
+				var tickerData = GetTickerData(ranking.Ticker);
+				if (
+					tickerData.Industry == "Telecom Services" ||
+					tickerData.Sector == "Utilities"
+				)
+					continue;
+				if (!Buy(ranking.Ticker, shares))
+					break;
+			}
 		}
 	}
 }

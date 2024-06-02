@@ -1,5 +1,6 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Document;
+using Fundamentalist.CsvImport.Document;
 using MongoDB.Driver;
 using System.Collections.ObjectModel;
 
@@ -25,6 +26,7 @@ namespace Fundamentalist.Backtest
 		private Configuration _configuration;
 		private IMongoCollection<Price> _prices;
 		private IMongoCollection<IndexComponents> _indexComponents;
+		private IMongoCollection<TickerData> _tickers;
 
 		private DateTime? _now;
 		private decimal? _cash;
@@ -38,6 +40,7 @@ namespace Fundamentalist.Backtest
 			var database = Utility.GetMongoDatabase(_configuration.ConnectionString);
 			_prices = database.GetCollection<Price>(Collection.Prices);
 			_indexComponents = database.GetCollection<IndexComponents>(Collection.IndexComponents);
+			_tickers = database.GetCollection<TickerData>(Collection.Tickers);
 			_cash = _configuration.Cash;
 			_positions = new Dictionary<string, StockPosition>();
 
@@ -156,6 +159,13 @@ namespace Fundamentalist.Backtest
 			if (position.Count == 0)
 				_positions.Remove(ticker);
 			_cash += total;
+		}
+
+		public TickerData GetTickerData(string ticker)
+		{
+			var filter = Builders<TickerData>.Filter.Eq(x => x.Ticker, ticker);
+			var output = _tickers.Find(filter).FirstOrDefault();
+			return output;
 		}
 
 		private decimal GetAsk(Price price)

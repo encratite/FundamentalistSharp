@@ -1,4 +1,5 @@
 ﻿using Fundamentalist.Common.Document;
+using Fundamentalist.CsvImport.Document;
 using System.Collections.ObjectModel;
 
 namespace Fundamentalist.Backtest
@@ -58,6 +59,11 @@ namespace Fundamentalist.Backtest
 		protected void Sell(string ticker, long count)
 		{
 			_backtest.Sell(ticker, count);
+		}
+
+		protected TickerData GetTickerData(string ticker)
+		{
+			return _backtest.GetTickerData(ticker);
 		}
 	}
 }
