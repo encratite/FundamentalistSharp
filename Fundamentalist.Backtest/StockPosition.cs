@@ -10,5 +10,10 @@
 			Ticker = symbol;
 			Count = count;
 		}
+
+		public override string ToString()
+		{
+			return $"{Ticker} ({Count})";
+		}
 	}
 }

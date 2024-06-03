@@ -26,19 +26,24 @@ namespace Fundamentalist.Backtest.Strategies
 			return Prices.Last().Close;
 		}
 
+		public override string ToString()
+		{
+			return $"{Ticker} ({AdjustedSlope}, {MovingAverage}, {LargestGap}, {AverageTrueRange})";
+		}
+
 		private double? GetAdjustedSlope(int slopeDays)
 		{
 			if (Prices.Count < slopeDays)
 				return null;
 			var prices = GetPrices(slopeDays);
-			var xValues = prices.Select(x => Math.Log((double)x));
-			var xDeltas = GetDeltas(xValues);
-			var yValues = new List<double>();
+			var xValues = new List<double>();
 			for (int i = 1; i <= slopeDays; i++)
-				yValues.Add(i);
+				xValues.Add(i);
+			var xDeltas = GetDeltas(xValues);
+			var yValues = prices.Select(x => Math.Log((double)x));
 			var yDeltas = GetDeltas(yValues);
-			double exponentialSlope = GetExponentialSlope(xDeltas, yDeltas);
-			double annualizedSlope = Math.Pow(exponentialSlope, 250) - 1;
+			double slope = GetSlope(xDeltas, yDeltas);
+			double annualizedSlope = Math.Pow(Math.Exp(slope), 250) - 1;
 			double r2 = GetR2(xDeltas, yDeltas);
 			double adjustedSlope = annualizedSlope * r2;
 			return adjustedSlope;
@@ -49,7 +54,7 @@ namespace Fundamentalist.Backtest.Strategies
 			if (Prices.Count < movingAverageDays)
 				return null;
 			var prices = GetPrices(movingAverageDays);
-			double movingAverage = GetMean(prices.Cast<double>());
+			double movingAverage = GetMean(prices.Select(x => (double)x));
 			return movingAverage;
 		}
 
@@ -57,8 +62,7 @@ namespace Fundamentalist.Backtest.Strategies
 		{
 			return Prices
 				.AsEnumerable()
-				.Reverse()
-				.Take(count)
+				.TakeLast(count)
 				.Select(x => x.Close)
 				.ToList();
 		}
@@ -79,7 +83,7 @@ namespace Fundamentalist.Backtest.Strategies
 			return mean;
 		}
 
-		private double GetExponentialSlope(List<double> xDeltas, List<double> yDeltas)
+		private double GetSlope(List<double> xDeltas, List<double> yDeltas)
 		{
 			double numerator = 0;
 			double denominator = 0;

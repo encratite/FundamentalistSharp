@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using Fundamentalist.Backtest.Strategies;
+using System.Reflection;
 using System.Text.Json;
 
 namespace Fundamentalist.Backtest
@@ -22,8 +23,10 @@ namespace Fundamentalist.Backtest
 			};
 			var configuration = JsonSerializer.Deserialize<Configuration>(jsonConfiguration, options);
 			configuration.Validate();
+			var strategyConfiguration = new ClenowMomentumConfiguration();
+			var strategy = new ClenowMomentumStrategy(strategyConfiguration);
 			var backtest = new Backtest();
-			// backtest.Run(configuration);
+			backtest.Run(strategy, configuration);
 		}
 	}
 }

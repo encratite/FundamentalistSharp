@@ -26,6 +26,7 @@
 			if (!rebalance)
 				return;
 			decimal accountValue = GetAccountValue();
+			Console.WriteLine($"[{Now.ToShortDateString()}] Rebalancing {accountValue:C}");
 			Rebalance(true, accountValue, tickerRanking);
 			Rebalance(false, accountValue, tickerRanking);
 			if (!IsBullMarket())
@@ -48,9 +49,7 @@
 			var indexComponents = GetIndexComponents();
 			int stockDays = Math.Max(_configuration.StockMovingAverageDays, _configuration.RegressionSlopeDays);
 			stockDays = Math.Max(stockDays, _configuration.AverageTrueRangeDays + 1);
-			DateTime to = Now;
-			DateTime from = to.AddDays(-stockDays);
-			var prices = GetPrices(indexComponents, from, to);
+			var prices = GetPrices(indexComponents, Now, stockDays);
 			var tickerRanking = new List<TickerPerformance>();
 			foreach (var pair in prices)
 			{
@@ -68,7 +67,7 @@
 
 		private decimal GetAccountValue()
 		{
-			decimal accountValue = 0;
+			decimal accountValue = Cash;
 			foreach (var position in Positions.Values)
 			{
 				decimal? price = GetOpenPrice(position.Ticker, Now);
@@ -101,7 +100,7 @@
 
 		private bool IsBullMarket()
 		{
-			var indexPrices = GetPrices((string)null, Now.AddDays(-_configuration.IndexMovingAverageDays), Now);
+			var indexPrices = GetPrices((string)null, Now, _configuration.IndexMovingAverageDays);
 			decimal sum = 0;
 			foreach (var price in indexPrices)
 				sum += price.Close;
@@ -122,6 +121,7 @@
 					break;
 				var tickerData = GetTickerData(ranking.Ticker);
 				if (
+					tickerData == null ||
 					tickerData.Industry == "Telecom Services" ||
 					tickerData.Sector == "Utilities"
 				)

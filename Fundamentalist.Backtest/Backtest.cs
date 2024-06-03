@@ -46,7 +46,7 @@ namespace Fundamentalist.Backtest
 
 			LoadIndexPriceData();
 			_now = GetNextTradingDay(_configuration.From.Value);
-
+			strategy.SetBacktest(this);
 			while (_now.HasValue && _now < _configuration.To && _cash.Value > 0)
 			{
 				strategy.Next();
@@ -89,6 +89,16 @@ namespace Fundamentalist.Backtest
 			return output;
 		}
 
+		public List<Price> GetPrices(string ticker, DateTime from, int count)
+		{
+			CheckDate(from);
+			var filter =
+				Builders<Price>.Filter.Eq(x => x.Ticker, ticker) &
+				Builders<Price>.Filter.Lt(x => x.Date, from);
+			var output = GetPricesWithLimit(filter, count);
+			return output;
+		}
+
 		public Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, DateTime to)
 		{
 			CheckFromTo(from, to);
@@ -97,18 +107,19 @@ namespace Fundamentalist.Backtest
 				Builders<Price>.Filter.Gte(x => x.Date, from) &
 				Builders<Price>.Filter.Lt(x => x.Date, to);
 			var prices = _prices.Find(filter).ToList();
-			var output = new Dictionary<string, List<Price>>();
-			foreach (var price in prices)
-			{
-				List<Price> tickerPrices;
-				string key = price.Ticker;
-				if (!output.TryGetValue(key, out tickerPrices))
-				{
-					tickerPrices = new List<Price>();
-					output[key] = tickerPrices;
-				}
-				tickerPrices.Add(price);
-			}
+			var output = GetPricesByTicker(prices);
+			return output;
+		}
+
+		public Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, int count)
+		{
+			CheckDate(from);
+			var filter =
+				Builders<Price>.Filter.In(x => x.Ticker, tickers) &
+				Builders<Price>.Filter.Lt(x => x.Date, from);
+			int adjustedCount = tickers.Count() * count;
+			var prices = GetPricesWithLimit(filter, adjustedCount);
+			var output = GetPricesByTicker(prices, count);
 			return output;
 		}
 
@@ -150,7 +161,8 @@ namespace Fundamentalist.Backtest
 				throw new ApplicationException("Unable to find ticker in positions");
 			if (position.Count < count)
 				throw new ApplicationException("Not enough shares available");
-			var price = GetPrice(ticker, _now.Value);
+			// This is a hack to deal with acquisitions
+			var price = GetLastPrice(ticker, _now.Value);
 			if (price == null)
 				throw new ApplicationException("Unable to sell stock due to lack of price data");
 			decimal bid = price.Open;
@@ -201,6 +213,15 @@ namespace Fundamentalist.Backtest
 			return price;
 		}
 
+		private Price GetLastPrice(string ticker, DateTime day)
+		{
+			CheckDate(day);
+			var filter = Builders<Price>.Filter.Eq(x => x.Ticker, ticker) & Builders<Price>.Filter.Lte(x => x.Date, day);
+			var sort = Builders<Price>.Sort.Descending(x => x.Date);
+			var price = _prices.Find(filter).Sort(sort).Limit(1).FirstOrDefault();
+			return price;
+		}
+
 		private void CheckDate(DateTime day)
 		{
 			if (day > _now)
@@ -211,6 +232,37 @@ namespace Fundamentalist.Backtest
 		{
 			if (from > to)
 				throw new ApplicationException("Invalid timestamps specified");
+		}
+
+		private Dictionary<string, List<Price>> GetPricesByTicker(List<Price> prices, int? limit = null)
+		{
+			var output = new Dictionary<string, List<Price>>();
+			foreach (var price in prices)
+			{
+				List<Price> tickerPrices;
+				string key = price.Ticker;
+				if (!output.TryGetValue(key, out tickerPrices))
+				{
+					tickerPrices = new List<Price>();
+					output[key] = tickerPrices;
+				}
+				if (!limit.HasValue || tickerPrices.Count < limit.Value)
+					tickerPrices.Add(price);
+			}
+			return output;
+		}
+
+		private List<Price> GetPricesWithLimit(FilterDefinition<Price> filter, int count)
+		{
+			var sort = Builders<Price>.Sort.Descending(x => x.Date);
+			var output = _prices
+				.Find(filter)
+				.Sort(sort)
+				.Limit(count)
+				.ToList()
+				.OrderBy(x => x.Date)
+				.ToList();
+			return output;
 		}
 	}
 }

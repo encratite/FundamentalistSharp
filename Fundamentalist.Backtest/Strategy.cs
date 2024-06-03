@@ -41,9 +41,19 @@ namespace Fundamentalist.Backtest
 			return _backtest.GetPrices(ticker, from, to);
 		}
 
+		protected List<Price> GetPrices(string ticker, DateTime from, int count)
+		{
+			return _backtest.GetPrices(ticker, from, count);
+		}
+
 		protected Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, DateTime to)
 		{
 			return _backtest.GetPrices(tickers, from, to);
+		}
+
+		protected Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, int count)
+		{
+			return _backtest.GetPrices(tickers, from, count);
 		}
 
 		protected long? GetBuyCount(string ticker, decimal targetSize)

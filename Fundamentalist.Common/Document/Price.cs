@@ -16,5 +16,10 @@ namespace Fundamentalist.Common.Document
 		public decimal Volume { get; set; }
 		public decimal AdjustedClose { get; set; }
 		public decimal? UnadjustedClose { get; set; }
+
+		public override string ToString()
+		{
+			return $"[{Date.ToShortDateString()}] {Ticker} {Close:F2}";
+		}
 	}
 }
