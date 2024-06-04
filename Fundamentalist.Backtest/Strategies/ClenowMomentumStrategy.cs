@@ -126,6 +126,9 @@
 					tickerData.Sector == "Utilities"
 				)
 					continue;
+				decimal positionSize = shares * ranking.Prices.Last().Close;
+				if (positionSize < _configuration.MinimumPositionSize)
+					continue;
 				if (!Buy(ranking.Ticker, shares))
 					break;
 			}

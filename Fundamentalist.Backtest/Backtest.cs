@@ -145,12 +145,17 @@ namespace Fundamentalist.Backtest
 			StockPosition position;
 			if (!_positions.TryGetValue(ticker, out position))
 			{
-				position = new StockPosition(ticker, count);
+				position = new StockPosition(ticker, ask, count);
 				_positions[ticker] = position;
 			}
 			else
-				position.Count += count;
+			{
+				long newCount = position.Count + count;
+				position.AverageBuyPrice = (position.Count * position.AverageBuyPrice + total) / newCount;
+				position.Count = newCount;
+			}
 			_cash -= total;
+			Log($"Bought {count} shares of {ticker} for {total:C}");
 			return true;
 		}
 
@@ -171,6 +176,8 @@ namespace Fundamentalist.Backtest
 			if (position.Count == 0)
 				_positions.Remove(ticker);
 			_cash += total;
+			decimal performance = bid / position.AverageBuyPrice - 1;
+			Log($"Sold {count} shares of {ticker} for {total:C} ({performance:+#0.00%;-#0.00%;+0.00%})");
 		}
 
 		public TickerData GetTickerData(string ticker)
@@ -263,6 +270,11 @@ namespace Fundamentalist.Backtest
 				.OrderBy(x => x.Date)
 				.ToList();
 			return output;
+		}
+
+		private void Log(string message)
+		{
+			Console.WriteLine($"[{Now.ToShortDateString()}] {message}");
 		}
 	}
 }

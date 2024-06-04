@@ -11,5 +11,6 @@
 		public int AverageTrueRangeDays { get; set; } = 20;
 		public decimal GapFilter { get; set; } = 0.15m;
 		public decimal RiskFactor { get; set; } = 0.001m;
+		public decimal MinimumPositionSize { get; set; } = 1000m;
 	}
 }
