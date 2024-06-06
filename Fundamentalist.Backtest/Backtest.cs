@@ -1,5 +1,6 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Document;
+using Fundamentalist.Common.Json;
 using Fundamentalist.CsvImport.Document;
 using MongoDB.Driver;
 using System.Collections.ObjectModel;
@@ -82,53 +83,45 @@ namespace Fundamentalist.Backtest
 		public List<Price> GetPrices(string ticker, DateTime from, DateTime to)
 		{
 			CheckFromTo(from, to);
-			var filter =
-				Builders<Price>.Filter.Eq(x => x.Ticker, ticker) &
-				Builders<Price>.Filter.Gte(x => x.Date, from) &
-				Builders<Price>.Filter.Lt(x => x.Date, to);
-			var output = _prices.Find(filter).ToList();
-			return output;
+			var prices = GetCachedPrices(ticker);
+			return prices.Where(x => x.Date >= from && x.Date < to).ToList();
 		}
 
 		public List<Price> GetPrices(string ticker, DateTime from, int count)
 		{
 			CheckDate(from);
-			var filter =
-				Builders<Price>.Filter.Eq(x => x.Ticker, ticker) &
-				Builders<Price>.Filter.Lt(x => x.Date, from);
-			var output = GetPricesWithLimit(filter, count);
+			var prices = GetCachedPrices(ticker);
+			var output = prices.Where(x => x.Date < from).TakeLast(count).ToList();
 			return output;
 		}
 
 		public Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, DateTime to)
 		{
 			CheckFromTo(from, to);
-			var filter =
-				Builders<Price>.Filter.In(x => x.Ticker, tickers) &
-				Builders<Price>.Filter.Gte(x => x.Date, from) &
-				Builders<Price>.Filter.Lt(x => x.Date, to);
-			var prices = _prices.Find(filter).ToList();
-			var output = GetPricesByTicker(prices);
+			var output = new Dictionary<string, List<Price>>();
+			foreach (string ticker in tickers)
+			{
+				var prices = GetCachedPrices(ticker);
+				output[ticker] = prices.Where(x => x.Date >= from && x.Date < to).ToList();
+			}
 			return output;
 		}
 
 		public Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, int count)
 		{
 			CheckDate(from);
-			var filter =
-				Builders<Price>.Filter.In(x => x.Ticker, tickers) &
-				Builders<Price>.Filter.Lt(x => x.Date, from);
-			int adjustedCount = tickers.Count() * count;
-			var prices = GetPricesWithLimit(filter, adjustedCount);
-			var output = GetPricesByTicker(prices, count);
+			var output = new Dictionary<string, List<Price>>();
+			foreach (string ticker in tickers)
+			{
+				var prices = GetCachedPrices(ticker);
+				output[ticker] = prices.Where(x => x.Date < from).TakeLast(count).ToList();
+			}
 			return output;
 		}
 
 		public long? GetBuyCount(string ticker, decimal targetSize)
 		{
 			var price = GetPrice(ticker, _now.Value);
-			if (price == null)
-				return null;
 			decimal ask = GetAsk(price);
 			long count = (long)Math.Floor(targetSize / ask);
 			return count;
@@ -192,6 +185,11 @@ namespace Fundamentalist.Backtest
 			return output;
 		}
 
+		public void Log(string message)
+		{
+			Console.WriteLine($"[{Now.ToShortDateString()}] {message}");
+		}
+
 		private decimal GetOrderFees(long count, decimal total)
 		{
 			decimal fees = count * _configuration.FeesPerShare.Value;
@@ -228,18 +226,15 @@ namespace Fundamentalist.Backtest
 		private Price GetPrice(string ticker, DateTime day)
 		{
 			CheckDate(day);
-			var filter = Builders<Price>.Filter.Eq(x => x.Ticker, ticker) & Builders<Price>.Filter.Eq(x => x.Date, day);
-			var price = _prices.Find(filter).FirstOrDefault();
-			return price;
+			var prices = GetCachedPrices(ticker);
+			return prices.FirstOrDefault(x => x.Date == day);
 		}
 
 		private Price GetLastPrice(string ticker, DateTime day)
 		{
 			CheckDate(day);
-			var filter = Builders<Price>.Filter.Eq(x => x.Ticker, ticker) & Builders<Price>.Filter.Lte(x => x.Date, day);
-			var sort = Builders<Price>.Sort.Descending(x => x.Date);
-			var price = _prices.Find(filter).Sort(sort).Limit(1).FirstOrDefault();
-			return price;
+			var prices = GetCachedPrices(ticker);
+			return prices.Where(x => x.Date < day).LastOrDefault();
 		}
 
 		private void CheckDate(DateTime day)
@@ -272,22 +267,26 @@ namespace Fundamentalist.Backtest
 			return output;
 		}
 
-		private List<Price> GetPricesWithLimit(FilterDefinition<Price> filter, int count)
+		private List<Price> GetCachedPrices(string ticker)
 		{
-			var sort = Builders<Price>.Sort.Descending(x => x.Date);
-			var output = _prices
-				.Find(filter)
-				.Sort(sort)
-				.Limit(count)
-				.ToList()
-				.OrderBy(x => x.Date)
-				.ToList();
+			if (ticker == null)
+				return _indexPrices.Values.ToList();
+			List<Price> output;
+			if (_priceCache.TryGetValue(ticker, out output))
+				return output;
+			var from = GetAdjustedFrom();
+			var filter =
+				Builders<Price>.Filter.Eq(x => x.Ticker, ticker) &
+				Builders<Price>.Filter.Gte(x => x.Date, from);
+			output = _prices.Find(filter).ToList().OrderBy(x => x.Date).ToList();
+			_priceCache[ticker] = output;
 			return output;
 		}
 
-		private void Log(string message)
+		private DateTime GetAdjustedFrom()
 		{
-			Console.WriteLine($"[{Now.ToShortDateString()}] {message}");
+			DateTime from = _configuration.From.Value.AddYears(-1);
+			return from;
 		}
 	}
 }

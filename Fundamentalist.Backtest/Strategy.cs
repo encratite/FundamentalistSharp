@@ -75,5 +75,10 @@ namespace Fundamentalist.Backtest
 		{
 			return _backtest.GetTickerData(ticker);
 		}
+
+		protected void Log(string message)
+		{
+			_backtest.Log(message);
+		}
 	}
 }

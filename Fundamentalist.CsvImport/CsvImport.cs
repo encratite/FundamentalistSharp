@@ -66,6 +66,8 @@ namespace Fundamentalist.CsvImport
 			_database.DropCollection(Collection.Prices);
 			_database.CreateCollection(Collection.Prices);
 			var collection = _database.GetCollection<Price>(Collection.Prices);
+			var tickerIndex = Builders<Price>.IndexKeys.Ascending(x => x.Ticker);
+			collection.Indexes.CreateOne(new CreateIndexModel<Price>(tickerIndex));
 			var tickerDateIndex = Builders<Price>.IndexKeys.Ascending(x => x.Ticker).Ascending(x => x.Date);
 			collection.Indexes.CreateOne(new CreateIndexModel<Price>(tickerDateIndex));
 			using var reader = new StreamReader(_configuration.PriceCsvPath);

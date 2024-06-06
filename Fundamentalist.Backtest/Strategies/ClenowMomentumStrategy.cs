@@ -26,11 +26,14 @@
 			if (!rebalance)
 				return;
 			decimal accountValue = GetAccountValue();
-			Console.WriteLine($"[{Now.ToShortDateString()}] Rebalancing {accountValue:C}");
+			Log($"Rebalancing {accountValue:C}");
 			Rebalance(true, accountValue, tickerRanking);
-			Rebalance(false, accountValue, tickerRanking);
 			if (!IsBullMarket())
+			{
+				Log("Bear market detected, not buying any more stocks");
 				return;
+			}
+			Rebalance(false, accountValue, tickerRanking);
 			BuyStocks(accountValue, tickerRanking);
 		}
 
@@ -53,7 +56,10 @@
 			var tickerRanking = new List<TickerPerformance>();
 			foreach (var pair in prices)
 			{
-				var performance = new TickerPerformance(pair.Key, pair.Value, _configuration);
+				var tickerPrices = pair.Value;
+				if (!tickerPrices.Any())
+					continue;
+				var performance = new TickerPerformance(pair.Key, tickerPrices, _configuration);
 				if (performance.AdjustedSlope.HasValue && performance.MovingAverage.HasValue)
 					tickerRanking.Add(performance);
 			}
