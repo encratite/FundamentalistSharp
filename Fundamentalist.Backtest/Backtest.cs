@@ -33,6 +33,7 @@ namespace Fundamentalist.Backtest
 		private Dictionary<string, StockPosition> _positions;
 
 		private SortedList<DateTime, Price> _indexPrices;
+		private Dictionary<string, List<Price>> _priceCache = new Dictionary<string, List<Price>>();
 
 		public void Run(Strategy strategy, Configuration configuration)
 		{
@@ -140,6 +141,8 @@ namespace Fundamentalist.Backtest
 				throw new ApplicationException("Unable to buy stock due to lack of price data");
 			decimal ask = GetAsk(price);
 			decimal total = count * ask;
+			decimal fees = GetOrderFees(count, total);
+			total += fees;
 			if (total > _cash)
 				return false;
 			StockPosition position;
@@ -171,7 +174,9 @@ namespace Fundamentalist.Backtest
 			if (price == null)
 				throw new ApplicationException("Unable to sell stock due to lack of price data");
 			decimal bid = price.Open;
-			decimal total = position.Count * bid;
+			decimal total = count * bid;
+			decimal fees = GetOrderFees(count, total);
+			total -= fees;
 			position.Count -= count;
 			if (position.Count == 0)
 				_positions.Remove(ticker);
@@ -185,6 +190,14 @@ namespace Fundamentalist.Backtest
 			var filter = Builders<TickerData>.Filter.Eq(x => x.Ticker, ticker);
 			var output = _tickers.Find(filter).FirstOrDefault();
 			return output;
+		}
+
+		private decimal GetOrderFees(long count, decimal total)
+		{
+			decimal fees = count * _configuration.FeesPerShare.Value;
+			fees = Math.Max(_configuration.MinimumFeesPerOrder.Value, fees);
+			fees = Math.Min(_configuration.MaximumFeesPerOrderRatio.Value * total, fees);
+			return fees;
 		}
 
 		private decimal GetAsk(Price price)
