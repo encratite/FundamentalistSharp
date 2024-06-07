@@ -13,6 +13,10 @@ namespace Fundamentalist.Backtest
 			_backtest = backtest;
 		}
 
+		public virtual void Initialize()
+		{
+		}
+
 		public abstract void Next();
 
 		protected DateTime Now => _backtest.Now;
@@ -24,6 +28,11 @@ namespace Fundamentalist.Backtest
 		protected List<string> GetIndexComponents()
 		{
 			return _backtest.GetIndexComponents();
+		}
+
+		protected void PreCacheIndexComponents()
+		{
+			_backtest.PreCacheIndexComponents();
 		}
 
 		protected decimal? GetOpenPrice(string ticker, DateTime day)

@@ -1,4 +1,6 @@
-﻿namespace Fundamentalist.Backtest.Strategies
+﻿using System.Collections.Concurrent;
+
+namespace Fundamentalist.Backtest.Strategies
 {
 	internal class ClenowMomentumStrategy : Strategy
 	{
@@ -9,6 +11,11 @@
 		public ClenowMomentumStrategy(ClenowMomentumConfiguration configuration)
 		{
 			_configuration = configuration;
+		}
+
+		public override void Initialize()
+		{
+			PreCacheIndexComponents();
 		}
 
 		public override void Next()
@@ -53,17 +60,17 @@
 			int stockDays = Math.Max(_configuration.StockMovingAverageDays, _configuration.RegressionSlopeDays);
 			stockDays = Math.Max(stockDays, _configuration.AverageTrueRangeDays + 1);
 			var prices = GetPrices(indexComponents, Now, stockDays);
-			var tickerRanking = new List<TickerPerformance>();
-			foreach (var pair in prices)
+			var rankingBag = new ConcurrentBag<TickerPerformance>();
+			Parallel.ForEach(prices, pair =>
 			{
 				var tickerPrices = pair.Value;
 				if (!tickerPrices.Any())
-					continue;
+					return;
 				var performance = new TickerPerformance(pair.Key, tickerPrices, _configuration);
 				if (performance.AdjustedSlope.HasValue && performance.MovingAverage.HasValue)
-					tickerRanking.Add(performance);
-			}
-			tickerRanking = tickerRanking
+					rankingBag.Add(performance);
+			});
+			var tickerRanking = rankingBag
 				.Where(x => (double)x.GetLastClose() > x.MovingAverage)
 				.OrderByDescending(x => x.AdjustedSlope)
 				.Take(_configuration.IndexRankFilter)

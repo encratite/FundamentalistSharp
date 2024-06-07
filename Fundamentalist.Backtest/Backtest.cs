@@ -3,6 +3,7 @@ using Fundamentalist.Common.Document;
 using Fundamentalist.Common.Json;
 using Fundamentalist.CsvImport.Document;
 using MongoDB.Driver;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 
 namespace Fundamentalist.Backtest
@@ -49,6 +50,7 @@ namespace Fundamentalist.Backtest
 			LoadIndexPriceData();
 			_now = GetNextTradingDay(_configuration.From.Value);
 			strategy.SetBacktest(this);
+			strategy.Initialize();
 			while (_now.HasValue && _now < _configuration.To && _cash.Value > 0)
 			{
 				strategy.Next();
@@ -62,6 +64,35 @@ namespace Fundamentalist.Backtest
 			var sort = Builders<IndexComponents>.Sort.Descending(x => x.Date);
 			var indexComponents = _indexComponents.Find(filter).Sort(sort).FirstOrDefault();
 			return indexComponents.Tickers;
+		}
+
+		public void PreCacheIndexComponents()
+		{
+			using var test = new PerformanceTimer("Caching index components", "Done caching");
+			var tickers = new HashSet<string>();
+			var indexComponents = _indexComponents.Find(Builders<IndexComponents>.Filter.Empty).ToList();
+			foreach (var components in indexComponents)
+			{
+				foreach (string ticker in components.Tickers)
+					tickers.Add(ticker);
+			}
+			var from = GetAdjustedFrom();
+			var filter =
+					Builders<Price>.Filter.In(x => x.Ticker, tickers) &
+					Builders<Price>.Filter.Gte(x => x.Date, from);
+			var prices = _prices.Find(filter).ToList();
+			foreach (var price in prices)
+			{
+				List<Price> list;
+				if (!_priceCache.TryGetValue(price.Ticker, out list))
+				{
+					list = new List<Price>();
+					_priceCache[price.Ticker] = list;
+				}
+				list.Add(price);
+			}
+			foreach (var list in _priceCache.Values)
+				list.Sort((x, y) => x.Date.CompareTo(y.Date));
 		}
 
 		public decimal? GetOpenPrice(string ticker, DateTime day)
@@ -98,25 +129,25 @@ namespace Fundamentalist.Backtest
 		public Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, DateTime to)
 		{
 			CheckFromTo(from, to);
-			var output = new Dictionary<string, List<Price>>();
-			foreach (string ticker in tickers)
+			var output = new ConcurrentDictionary<string, List<Price>>();
+			Parallel.ForEach(tickers, ticker =>
 			{
 				var prices = GetCachedPrices(ticker);
 				output[ticker] = prices.Where(x => x.Date >= from && x.Date < to).ToList();
-			}
-			return output;
+			});
+			return output.ToDictionary();
 		}
 
 		public Dictionary<string, List<Price>> GetPrices(IEnumerable<string> tickers, DateTime from, int count)
 		{
 			CheckDate(from);
-			var output = new Dictionary<string, List<Price>>();
-			foreach (string ticker in tickers)
+			var output = new ConcurrentDictionary<string, List<Price>>();
+			Parallel.ForEach(tickers, ticker =>
 			{
 				var prices = GetCachedPrices(ticker);
 				output[ticker] = prices.Where(x => x.Date < from).TakeLast(count).ToList();
-			}
-			return output;
+			});
+			return output.ToDictionary();
 		}
 
 		public long? GetBuyCount(string ticker, decimal targetSize)
