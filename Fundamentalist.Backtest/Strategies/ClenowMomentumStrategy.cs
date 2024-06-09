@@ -139,7 +139,7 @@ namespace Fundamentalist.Backtest.Strategies
 					tickerData.Sector == "Utilities"
 				)
 					continue;
-				decimal positionSize = shares * ranking.Prices.Last().Close;
+				decimal positionSize = shares * ranking.Prices.Last().UnadjustedClose.Value;
 				if (positionSize < _configuration.MinimumPositionSize)
 					continue;
 				if (!Buy(ranking.Ticker, shares))

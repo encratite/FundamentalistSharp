@@ -40,6 +40,11 @@ namespace Fundamentalist.Backtest
 			return _backtest.GetOpenPrice(ticker, day);
 		}
 
+		protected decimal? GetUnadjustedOpenPrice(string ticker, DateTime day)
+		{
+			return _backtest.GetUnadjustedOpenPrice(ticker, day);
+		}
+
 		protected decimal? GetClosePrice(string ticker, DateTime day)
 		{
 			return _backtest.GetClosePrice(ticker, day);

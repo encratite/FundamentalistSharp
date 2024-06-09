@@ -17,6 +17,30 @@ namespace Fundamentalist.Common.Document
 		public decimal AdjustedClose { get; set; }
 		public decimal? UnadjustedClose { get; set; }
 
+		[BsonIgnore]
+		public decimal UnadjustedOpen
+		{
+			get => Ratio * Open;
+		}
+
+		[BsonIgnore]
+		public decimal UnadjustedHigh
+		{
+			get => Ratio * High;
+		}
+
+		[BsonIgnore]
+		public decimal UnadjustedLow
+		{
+			get => Ratio * Low;
+		}
+
+		[BsonIgnore]
+		private decimal Ratio
+		{
+			get => UnadjustedClose.Value / Close;
+		}
+
 		public override string ToString()
 		{
 			return $"[{Date.ToShortDateString()}] {Ticker} {Close:F2}";

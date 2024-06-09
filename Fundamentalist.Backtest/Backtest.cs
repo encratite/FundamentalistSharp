@@ -98,9 +98,13 @@ namespace Fundamentalist.Backtest
 		public decimal? GetOpenPrice(string ticker, DateTime day)
 		{
 			var price = GetPrice(ticker, day);
-			if (price == null)
-				return null;
-			return price.Open;
+			return price?.Open;
+		}
+
+		public decimal? GetUnadjustedOpenPrice(string ticker, DateTime day)
+		{
+			var price = GetPrice(ticker, day);
+			return price?.UnadjustedOpen;
 		}
 
 		public decimal? GetClosePrice(string ticker, DateTime day)
@@ -197,7 +201,7 @@ namespace Fundamentalist.Backtest
 			var price = GetLastPrice(ticker, _now.Value);
 			if (price == null)
 				throw new ApplicationException("Unable to sell stock due to lack of price data");
-			decimal bid = price.Open;
+			decimal bid = price.UnadjustedOpen;
 			decimal total = count * bid;
 			decimal fees = GetOrderFees(count, total);
 			total -= fees;
@@ -231,7 +235,7 @@ namespace Fundamentalist.Backtest
 
 		private decimal GetAsk(Price price)
 		{
-			decimal ask = price.Open * (1 + _configuration.Spread.Value);
+			decimal ask = price.UnadjustedOpen * (1 + _configuration.Spread.Value);
 			return ask;
 		}
 

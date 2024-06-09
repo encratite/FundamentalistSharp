@@ -144,9 +144,9 @@ namespace Fundamentalist.Backtest.Strategies
 			{
 				var current = prices[i];
 				var previous = prices[i - 1];
-				decimal trueRange = current.High - current.Low;
-				trueRange = Math.Max(Math.Abs(current.High - previous.Close), trueRange);
-				trueRange = Math.Max(Math.Abs(current.Low - previous.Close), trueRange);
+				decimal trueRange = current.UnadjustedHigh - current.UnadjustedLow;
+				trueRange = Math.Max(Math.Abs(current.UnadjustedHigh - previous.UnadjustedClose.Value), trueRange);
+				trueRange = Math.Max(Math.Abs(current.UnadjustedLow - previous.UnadjustedClose.Value), trueRange);
 				sum += trueRange;
 			}
 			decimal averageTrueRange = sum / averageTrueRangeDays;
