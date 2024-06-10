@@ -7,6 +7,7 @@
 		public string IndexPriceCsvPath { get; set; }
 		public string IndexComponentsCsvPath { get; set; }
 		public string TickerCsvPath { get; set; }
+		public string ActionCsvPath { get; set; }
 		public string ConnectionString { get; set; }
 
 		public void Validate()
@@ -16,6 +17,7 @@
 				PriceCsvPath != null &&
 				IndexPriceCsvPath != null &&
 				IndexComponentsCsvPath != null &&
+				ActionCsvPath != null &&
 				TickerCsvPath != null;
 			if (!valid)
 				throw new ApplicationException("Invalid configuration file");

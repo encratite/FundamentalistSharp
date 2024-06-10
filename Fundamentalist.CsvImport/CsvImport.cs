@@ -28,12 +28,12 @@ namespace Fundamentalist.CsvImport
 			ImportIndexPriceData();
 			ImportIndexComponents();
 			ImportTickers();
+			ImportActions();
 		}
 
 		private void ImportSecData()
 		{
-			_database.DropCollection(Collection.Submissions);
-			_database.CreateCollection(Collection.Submissions);
+			DropAndCreate(Collection.Submissions);
 			var collection = _database.GetCollection<SecSubmission>(Collection.Submissions);
 			var adshIndex = Builders<SecSubmission>.IndexKeys.Ascending(x => x.Form);
 			collection.Indexes.CreateOne(new CreateIndexModel<SecSubmission>(adshIndex));
@@ -63,8 +63,7 @@ namespace Fundamentalist.CsvImport
 		private void ImportPriceData()
 		{
 			using var timer = new PerformanceTimer("Importing price data", "Imported price data");
-			_database.DropCollection(Collection.Prices);
-			_database.CreateCollection(Collection.Prices);
+			DropAndCreate(Collection.Prices);
 			var collection = _database.GetCollection<Price>(Collection.Prices);
 			var tickerIndex = Builders<Price>.IndexKeys.Ascending(x => x.Ticker);
 			collection.Indexes.CreateOne(new CreateIndexModel<Price>(tickerIndex));
@@ -72,10 +71,7 @@ namespace Fundamentalist.CsvImport
 			collection.Indexes.CreateOne(new CreateIndexModel<Price>(tickerDateIndex));
 			using var reader = new StreamReader(_configuration.PriceCsvPath);
 			using var csvReader = GetCsvReader(reader);
-			var decimalConverter = new PriceDecimalConverter();
-			var converterCache = csvReader.Context.TypeConverterCache;
-			converterCache.AddConverter<decimal>(decimalConverter);
-			converterCache.AddConverter<decimal?>(decimalConverter);
+			AddDecimalConverter(csvReader);
 			var records = csvReader.GetRecords<PriceRow>();
 			var batch = new List<Price>();
 			foreach (var priceRow in records)
@@ -106,8 +102,7 @@ namespace Fundamentalist.CsvImport
 
 		private void ImportIndexComponents()
 		{
-			_database.DropCollection(Collection.IndexComponents);
-			_database.CreateCollection(Collection.IndexComponents);
+			DropAndCreate(Collection.IndexComponents);
 			var collection = _database.GetCollection<IndexComponents>(Collection.IndexComponents);
 			var dateIndex = Builders<IndexComponents>.IndexKeys.Descending(x => x.Date);
 			collection.Indexes.CreateOne(new CreateIndexModel<IndexComponents>(dateIndex));
@@ -124,8 +119,7 @@ namespace Fundamentalist.CsvImport
 		private void ImportTickers()
 		{
 			using var timer = new PerformanceTimer("Importing ticker data", "Imported ticker data");
-			_database.DropCollection(Collection.Tickers);
-			_database.CreateCollection(Collection.Tickers);
+			DropAndCreate(Collection.Tickers);
 			var collection = _database.GetCollection<TickerData>(Collection.Tickers);
 			var cikIndex = Builders<TickerData>.IndexKeys.Ascending(x => x.Cik);
 			collection.Indexes.CreateOne(new CreateIndexModel<TickerData>(cikIndex));
@@ -133,7 +127,7 @@ namespace Fundamentalist.CsvImport
 			using var csvReader = GetCsvReader(reader);
 			var records = csvReader.GetRecords<TickerRow>();
 			var usedSymbols = new HashSet<string>();
-			var output = new List<TickerData>();
+			var tickers = new List<TickerData>();
 			foreach (var row in records)
 			{
 				var ticker = row.GetTickerData();
@@ -147,10 +141,24 @@ namespace Fundamentalist.CsvImport
 					)
 				)
 					continue;
-				output.Add(ticker);
+				tickers.Add(ticker);
 				usedSymbols.Add(ticker.Ticker);
 			}
-			collection.InsertMany(output);
+			collection.InsertMany(tickers);
+		}
+
+		private void ImportActions()
+		{
+			DropAndCreate(Collection.Actions);
+			var collection = _database.GetCollection<CorporateAction>(Collection.Actions);
+			var actionIndex = Builders<CorporateAction>.IndexKeys.Ascending(x => x.Action);
+			collection.Indexes.CreateOne(new CreateIndexModel<CorporateAction>(actionIndex));
+			using var reader = new StreamReader(_configuration.ActionCsvPath);
+			using var csvReader = GetCsvReader(reader);
+			AddDecimalConverter(csvReader);
+			var records = csvReader.GetRecords<ActionRow>();
+			var actions = records.Select(x => x.GetCorporateAction());
+			collection.InsertMany(actions);
 		}
 
 		private List<T> GetRecords<T>(string filename, ZipArchive archive)
@@ -171,6 +179,20 @@ namespace Fundamentalist.CsvImport
 			};
 			var csvReader = new CsvReader(reader, configuration);
 			return csvReader;
+		}
+
+		private void DropAndCreate(string collection)
+		{
+			_database.DropCollection(collection);
+			_database.CreateCollection(collection);
+		}
+
+		private void AddDecimalConverter(CsvReader csvReader)
+		{
+			var decimalConverter = new PriceDecimalConverter();
+			var converterCache = csvReader.Context.TypeConverterCache;
+			converterCache.AddConverter<decimal>(decimalConverter);
+			converterCache.AddConverter<decimal?>(decimalConverter);
 		}
 	}
 }

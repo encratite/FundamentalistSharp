@@ -78,19 +78,6 @@ namespace Fundamentalist.Backtest.Strategies
 			return tickerRanking;
 		}
 
-		private decimal GetAccountValue()
-		{
-			decimal accountValue = Cash;
-			foreach (var position in Positions.Values)
-			{
-				decimal? price = GetOpenPrice(position.Ticker, Now);
-				if (!price.HasValue)
-					continue;
-				accountValue += position.Count * price.Value;
-			}
-			return accountValue;
-		}
-
 		private void Rebalance(bool sell, decimal accountValue, List<TickerPerformance> tickerRanking)
 		{
 			foreach (var position in Positions.Values)

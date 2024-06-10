@@ -1,6 +1,5 @@
 ﻿using Fundamentalist.Common;
 using Fundamentalist.Common.Document;
-using Fundamentalist.Common.Json;
 using Fundamentalist.CsvImport.Document;
 using MongoDB.Driver;
 using System.Collections.Concurrent;
@@ -10,6 +9,23 @@ namespace Fundamentalist.Backtest
 {
 	internal class Backtest
 	{
+		private const string DividendAction = "dividend";
+		private const string DelistedAction = "delisted";
+
+		private Configuration _configuration;
+		private IMongoCollection<Price> _prices;
+		private IMongoCollection<IndexComponents> _indexComponents;
+		private IMongoCollection<TickerData> _tickers;
+		private IMongoCollection<CorporateAction> _actions;
+
+		private DateTime? _now;
+		private decimal? _cash;
+		private Dictionary<string, StockPosition> _positions;
+
+		private SortedList<DateTime, Price> _indexPrices;
+		private Dictionary<string, List<Price>> _priceCache = new Dictionary<string, List<Price>>();
+		private Dictionary<string, SortedList<DateTime, CorporateAction>> _actionCache;
+
 		public DateTime Now
 		{
 			get => _now.Value;
@@ -25,18 +41,6 @@ namespace Fundamentalist.Backtest
 			get => _positions.AsReadOnly();
 		}
 
-		private Configuration _configuration;
-		private IMongoCollection<Price> _prices;
-		private IMongoCollection<IndexComponents> _indexComponents;
-		private IMongoCollection<TickerData> _tickers;
-
-		private DateTime? _now;
-		private decimal? _cash;
-		private Dictionary<string, StockPosition> _positions;
-
-		private SortedList<DateTime, Price> _indexPrices;
-		private Dictionary<string, List<Price>> _priceCache = new Dictionary<string, List<Price>>();
-
 		public void Run(Strategy strategy, Configuration configuration)
 		{
 			_configuration = configuration;
@@ -44,18 +48,26 @@ namespace Fundamentalist.Backtest
 			_prices = database.GetCollection<Price>(Collection.Prices);
 			_indexComponents = database.GetCollection<IndexComponents>(Collection.IndexComponents);
 			_tickers = database.GetCollection<TickerData>(Collection.Tickers);
+			_actions = database.GetCollection<CorporateAction>(Collection.Actions);
 			_cash = _configuration.Cash;
 			_positions = new Dictionary<string, StockPosition>();
 
 			LoadIndexPriceData();
+			LoadActions();
 			_now = GetNextTradingDay(_configuration.From.Value);
 			strategy.SetBacktest(this);
 			strategy.Initialize();
 			while (_now.HasValue && _now < _configuration.To && _cash.Value > 0)
 			{
+				ProcessActions();
 				strategy.Next();
-				_now = GetNextTradingDay(_now.Value.AddDays(1));
+				var nextTradingDay = GetNextTradingDay(_now.Value.AddDays(1));
+				if (nextTradingDay == null)
+					break;
+				_now = nextTradingDay;
 			}
+			decimal accountValue = GetAccountValue();
+			Log($"Final account value: {accountValue:C}");
 		}
 
 		public List<string> GetIndexComponents()
@@ -68,7 +80,7 @@ namespace Fundamentalist.Backtest
 
 		public void PreCacheIndexComponents()
 		{
-			using var test = new PerformanceTimer("Caching index components", "Done caching");
+			using var test = new PerformanceTimer("Caching index components", "Done caching index components");
 			var tickers = new HashSet<string>();
 			var indexComponents = _indexComponents.Find(Builders<IndexComponents>.Filter.Empty).ToList();
 			foreach (var components in indexComponents)
@@ -197,8 +209,7 @@ namespace Fundamentalist.Backtest
 				throw new ApplicationException("Unable to find ticker in positions");
 			if (position.Count < count)
 				throw new ApplicationException("Not enough shares available");
-			// This is a hack to deal with acquisitions
-			var price = GetLastPrice(ticker, _now.Value);
+			var price = GetPrice(ticker, _now.Value);
 			if (price == null)
 				throw new ApplicationException("Unable to sell stock due to lack of price data");
 			decimal bid = price.UnadjustedOpen;
@@ -218,6 +229,22 @@ namespace Fundamentalist.Backtest
 			var filter = Builders<TickerData>.Filter.Eq(x => x.Ticker, ticker);
 			var output = _tickers.Find(filter).FirstOrDefault();
 			return output;
+		}
+
+		public decimal GetAccountValue()
+		{
+			decimal accountValue = Cash;
+			foreach (var position in Positions.Values)
+			{
+				decimal? price = GetUnadjustedOpenPrice(position.Ticker, Now);
+				if (!price.HasValue)
+				{
+					var lastPrice = GetLastPrice(position.Ticker, Now);
+					price = lastPrice.UnadjustedClose;
+				}
+				accountValue += position.Count * price.Value;
+			}
+			return accountValue;
 		}
 
 		public void Log(string message)
@@ -241,11 +268,34 @@ namespace Fundamentalist.Backtest
 
 		private void LoadIndexPriceData()
 		{
+			if (_indexPrices != null)
+				return;
 			_indexPrices = new SortedList<DateTime, Price>();
 			var filter = Builders<Price>.Filter.Eq(x => x.Ticker, null);
 			var indexPrices = _prices.Find(filter).ToList();
 			foreach (var price in indexPrices)
 				_indexPrices[price.Date] = price;
+		}
+
+		private void LoadActions()
+		{
+			if (_actionCache != null)
+				return;
+			using var test = new PerformanceTimer("Caching corporate actions", "Done caching corporate actions");
+			_actionCache = new Dictionary<string, SortedList<DateTime, CorporateAction>>();
+			var filter = Builders<CorporateAction>.Filter.Eq(x => x.Action, DividendAction) | Builders<CorporateAction>.Filter.Eq(x => x.Action, DelistedAction);
+			var actions = _actions.Find(filter).ToList();
+			foreach (var action in actions)
+			{
+				string key = action.Ticker;
+				SortedList<DateTime, CorporateAction> tickerActions;
+				if (!_actionCache.TryGetValue(key, out tickerActions))
+				{
+					tickerActions = new SortedList<DateTime, CorporateAction>();
+					_actionCache[key] = tickerActions;
+				}
+				tickerActions[action.Date] = action;
+			}
 		}
 
 		private DateTime? GetNextTradingDay(DateTime start)
@@ -322,6 +372,33 @@ namespace Fundamentalist.Backtest
 		{
 			DateTime from = _configuration.From.Value.AddYears(-1);
 			return from;
+		}
+
+		private void ProcessActions()
+		{
+			foreach (var position in _positions.Values)
+			{
+				SortedList<DateTime, CorporateAction> tickerActions;
+				if (!_actionCache.TryGetValue(position.Ticker, out tickerActions))
+					continue;
+				CorporateAction action;
+				if (!tickerActions.TryGetValue(Now, out action))
+					continue;
+				if (action.Action == DividendAction)
+				{
+					decimal dividends = position.Count * action.Value.Value;
+					_cash += dividends;
+					Log($"Received {dividends:C} worth of dividends for {position.Ticker}");
+				}
+				else if (action.Action == DelistedAction)
+				{
+					Log($"{position.Ticker} has been delisted");
+					var price = GetLastPrice(position.Ticker, Now);
+					Sell(position.Ticker, position.Count);
+				}
+				else
+					throw new ApplicationException("Encountered an unknown corporate action");
+			}
 		}
 	}
 }

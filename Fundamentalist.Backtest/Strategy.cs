@@ -90,6 +90,11 @@ namespace Fundamentalist.Backtest
 			return _backtest.GetTickerData(ticker);
 		}
 
+		protected decimal GetAccountValue()
+		{
+			return _backtest.GetAccountValue();
+		}
+
 		protected void Log(string message)
 		{
 			_backtest.Log(message);
