@@ -8,6 +8,9 @@ namespace Fundamentalist.Backtest
 	{
 		private Backtest _backtest;
 
+		public string Name { get; protected set; }
+		public string Description { get; protected set; }
+
 		public void SetBacktest(Backtest backtest)
 		{
 			_backtest = backtest;

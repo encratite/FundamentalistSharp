@@ -26,7 +26,8 @@ namespace Fundamentalist.Backtest
 			var strategyConfiguration = new ClenowMomentumConfiguration();
 			var strategy = new ClenowMomentumStrategy(strategyConfiguration);
 			var backtest = new Backtest();
-			backtest.Run(strategy, configuration);
+			var performance = backtest.Run(strategy, configuration);
+			backtest.SavePerformance(performance);
 		}
 	}
 }

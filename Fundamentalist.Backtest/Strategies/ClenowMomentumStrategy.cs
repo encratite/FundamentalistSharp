@@ -10,6 +10,8 @@ namespace Fundamentalist.Backtest.Strategies
 
 		public ClenowMomentumStrategy(ClenowMomentumConfiguration configuration)
 		{
+			Name = "Clenow";
+			Description = "Original momentum strategy with regime filter and industry filter";
 			_configuration = configuration;
 		}
 

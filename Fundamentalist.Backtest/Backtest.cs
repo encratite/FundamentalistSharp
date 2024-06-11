@@ -9,6 +9,7 @@ namespace Fundamentalist.Backtest
 {
 	internal class Backtest
 	{
+		private const bool EnableLogging = false;
 		private const string DividendAction = "dividend";
 		private const string DelistedAction = "delisted";
 
@@ -17,6 +18,7 @@ namespace Fundamentalist.Backtest
 		private IMongoCollection<IndexComponents> _indexComponents;
 		private IMongoCollection<TickerData> _tickers;
 		private IMongoCollection<CorporateAction> _actions;
+		private IMongoCollection<StrategyPerformance> _strategyPerformance;
 
 		private DateTime? _now;
 		private decimal? _cash;
@@ -25,6 +27,8 @@ namespace Fundamentalist.Backtest
 		private SortedList<DateTime, Price> _indexPrices;
 		private Dictionary<string, List<Price>> _priceCache = new Dictionary<string, List<Price>>();
 		private Dictionary<string, SortedList<DateTime, CorporateAction>> _actionCache;
+
+		private StrategyPerformance _performance;
 
 		public DateTime Now
 		{
@@ -41,33 +45,48 @@ namespace Fundamentalist.Backtest
 			get => _positions.AsReadOnly();
 		}
 
-		public void Run(Strategy strategy, Configuration configuration)
+		public StrategyPerformance Run(Strategy strategy, Configuration configuration)
 		{
 			_configuration = configuration;
-			var database = Utility.GetMongoDatabase(_configuration.ConnectionString);
-			_prices = database.GetCollection<Price>(Collection.Prices);
-			_indexComponents = database.GetCollection<IndexComponents>(Collection.IndexComponents);
-			_tickers = database.GetCollection<TickerData>(Collection.Tickers);
-			_actions = database.GetCollection<CorporateAction>(Collection.Actions);
+			InitializeCollections();
 			_cash = _configuration.Cash;
 			_positions = new Dictionary<string, StockPosition>();
+			_performance = new StrategyPerformance
+			{
+				Name = strategy.Name,
+				Description = strategy.Description
+			};
 
 			LoadIndexPriceData();
 			LoadActions();
 			_now = GetNextTradingDay(_configuration.From.Value);
 			strategy.SetBacktest(this);
 			strategy.Initialize();
+			decimal accountValue = _cash.Value;
+			var updateEquityCurve = () =>
+			{
+				accountValue = GetAccountValue();
+				var equitySample = new EquitySample
+				{
+					Date = Now,
+					Value = accountValue
+				};
+				_performance.EquityCurve.Add(equitySample);
+			};
 			while (_now.HasValue && _now < _configuration.To && _cash.Value > 0)
 			{
 				ProcessActions();
+				updateEquityCurve();
 				strategy.Next();
 				var nextTradingDay = GetNextTradingDay(_now.Value.AddDays(1));
 				if (nextTradingDay == null)
 					break;
 				_now = nextTradingDay;
 			}
-			decimal accountValue = GetAccountValue();
+			updateEquityCurve();
 			Log($"Final account value: {accountValue:C}");
+			_performance.Time = DateTimeOffset.Now;
+			return _performance;
 		}
 
 		public List<string> GetIndexComponents()
@@ -198,6 +217,15 @@ namespace Fundamentalist.Backtest
 				position.Count = newCount;
 			}
 			_cash -= total;
+			var action = new StrategyAction
+			{
+				Time = Now,
+				Action = StrategyActionEnum.Buy,
+				Ticker = ticker,
+				Price = ask,
+				Count = count
+			};
+			_performance.Actions.Add(action);
 			Log($"Bought {count} shares of {ticker} for {total:C}");
 			return true;
 		}
@@ -220,6 +248,15 @@ namespace Fundamentalist.Backtest
 			if (position.Count == 0)
 				_positions.Remove(ticker);
 			_cash += total;
+			var action = new StrategyAction
+			{
+				Time = Now,
+				Action = StrategyActionEnum.Sell,
+				Ticker = ticker,
+				Price = bid,
+				Count = count
+			};
+			_performance.Actions.Add(action);
 			decimal performance = bid / position.AverageBuyPrice - 1;
 			Log($"Sold {count} shares of {ticker} for {total:C} ({performance:+#0.00%;-#0.00%;+0.00%})");
 		}
@@ -249,7 +286,27 @@ namespace Fundamentalist.Backtest
 
 		public void Log(string message)
 		{
-			Console.WriteLine($"[{Now.ToShortDateString()}] {message}");
+			if (EnableLogging)
+				Console.WriteLine($"[{Now.ToShortDateString()}] {message}");
+		}
+
+		public void SavePerformance(StrategyPerformance performance)
+		{
+			_strategyPerformance.InsertOne(performance);
+		}
+
+		private void InitializeCollections()
+		{
+			var database = Utility.GetMongoDatabase(_configuration.ConnectionString);
+			var collections = database.ListCollectionNames().ToList();
+			if (!collections.Contains(Collection.StrategyPerformance))
+				database.CreateCollection(Collection.StrategyPerformance);
+
+			_prices = database.GetCollection<Price>(Collection.Prices);
+			_indexComponents = database.GetCollection<IndexComponents>(Collection.IndexComponents);
+			_tickers = database.GetCollection<TickerData>(Collection.Tickers);
+			_actions = database.GetCollection<CorporateAction>(Collection.Actions);
+			_strategyPerformance = database.GetCollection<StrategyPerformance>(Collection.StrategyPerformance);
 		}
 
 		private decimal GetOrderFees(long count, decimal total)
