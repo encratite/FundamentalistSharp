@@ -4,7 +4,7 @@ using System.Collections.ObjectModel;
 
 namespace Fundamentalist.Backtest
 {
-	internal abstract class Strategy
+	public abstract class Strategy
 	{
 		private Backtest _backtest;
 

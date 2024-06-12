@@ -1,0 +1,53 @@
+﻿<Window x:Class="Fundamentalist.Strategist.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Fundamentalist.Strategist"
+        mc:Ignorable="d"
+        Title="Strategist" Height="450" Width="800">
+    <Grid>
+        <TabControl>
+            <TabItem Header="Backtest">
+                <Grid Background="#FFE5E5E5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="175" />
+                        <ColumnDefinition Width="120" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Label Grid.Row="0" Grid.Column="0" Content="Strategy:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <ComboBox Grid.Row="0" Grid.Column="1" Name="Strategy" HorizontalAlignment="Left" VerticalAlignment="Center" Width="Auto" MinWidth="120" ItemsSource="{Binding Strategies}" DisplayMemberPath="Name"/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="From:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Name="From" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" Height="Auto" PreviewTextInput="OnDatePreviewTextInput"/>
+                    <Label Grid.Row="2" Grid.Column="0" Content="To:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="2" Grid.Column="1" Name="To" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnDatePreviewTextInput"/>
+                    <Label Grid.Row="3" Grid.Column="0" Content="Initial cash:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="3" Grid.Column="1" Name="Cash" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
+                    <Label Grid.Row="4" Grid.Column="0" Content="Spread:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="4" Grid.Column="1" Name="Spread" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
+                    <Label Grid.Row="5" Grid.Column="0" Content="Fees per share:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="5" Grid.Column="1" Name="FeesPerShare" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
+                    <Label Grid.Row="6" Grid.Column="0" Content="Minimum fees per order:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="6" Grid.Column="1" Name="MinimumFeesPerOrder" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
+                    <Label Grid.Row="7" Grid.Column="0" Content="Maximum fees per order ratio:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="7" Grid.Column="1" Name="MaximumFeesPerOrderRatio" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
+                    <Button Grid.Row="8" Grid.Column="1" Content="Run backtest" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="8,0,8,0" Margin="0,4,0,0"/>
+                </Grid>
+            </TabItem>
+            <TabItem Header="History">
+                <Grid Background="#FFE5E5E5"/>
+            </TabItem>
+        </TabControl>
+
+    </Grid>
+</Window>

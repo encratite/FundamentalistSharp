@@ -2,7 +2,7 @@
 
 namespace Fundamentalist.Backtest.Strategies
 {
-	internal class TickerPerformance
+	public class TickerPerformance
 	{
 		public string Ticker { get; set; }
 		public List<Price> Prices { get; set; }

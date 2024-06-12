@@ -2,7 +2,7 @@
 
 namespace Fundamentalist.Backtest.Strategies
 {
-	internal class ClenowMomentumStrategy : Strategy
+	public class ClenowMomentumStrategy : Strategy
 	{
 		private ClenowMomentumConfiguration _configuration;
 		private DateTime? _lastSellCheck = null;

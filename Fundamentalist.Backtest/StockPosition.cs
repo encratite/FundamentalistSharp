@@ -1,6 +1,6 @@
 ﻿namespace Fundamentalist.Backtest
 {
-	internal class StockPosition
+	public class StockPosition
 	{
 		public string Ticker { get; set; }
 		public decimal AverageBuyPrice { get; set; }

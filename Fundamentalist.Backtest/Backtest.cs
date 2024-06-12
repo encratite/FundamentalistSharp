@@ -7,7 +7,7 @@ using System.Collections.ObjectModel;
 
 namespace Fundamentalist.Backtest
 {
-	internal class Backtest
+	public class Backtest
 	{
 		private const bool EnableLogging = false;
 		private const string DividendAction = "dividend";

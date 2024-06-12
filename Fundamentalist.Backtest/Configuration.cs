@@ -1,6 +1,6 @@
 ﻿namespace Fundamentalist.Backtest
 {
-	internal class Configuration
+	public class Configuration
 	{
 		public string ConnectionString { get; set; }
 		public DateTime? From { get; set; }

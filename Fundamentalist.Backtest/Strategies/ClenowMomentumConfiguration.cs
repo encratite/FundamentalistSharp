@@ -1,6 +1,6 @@
 ﻿namespace Fundamentalist.Backtest.Strategies
 {
-	internal class ClenowMomentumConfiguration
+	public class ClenowMomentumConfiguration
 	{
 		public int SellDays { get; set; } = 7;
 		public int RebalanceDays { get; set; } = 14;
