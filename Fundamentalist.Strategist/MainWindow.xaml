@@ -9,7 +9,7 @@
     <Grid>
         <TabControl>
             <TabItem Header="Backtest">
-                <Grid Background="#FFE5E5E5">
+                <Grid Name="MainGrid" Background="#FFE5E5E5">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="175" />
                         <ColumnDefinition Width="120" />
@@ -24,9 +24,10 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Label Grid.Row="0" Grid.Column="0" Content="Strategy:" HorizontalAlignment="Left" VerticalAlignment="Center" />
-                    <ComboBox Grid.Row="0" Grid.Column="1" Name="Strategy" HorizontalAlignment="Left" VerticalAlignment="Center" Width="Auto" MinWidth="120" ItemsSource="{Binding Strategies}" DisplayMemberPath="Name"/>
+                    <ComboBox Grid.Row="0" Grid.Column="1" Name="Strategy" HorizontalAlignment="Left" VerticalAlignment="Center" Width="Auto" MinWidth="120" ItemsSource="{Binding Path=Strategies}" DisplayMemberPath="Name"/>
                     <Label Grid.Row="1" Grid.Column="0" Content="From:" HorizontalAlignment="Left" VerticalAlignment="Center" />
                     <TextBox Grid.Row="1" Grid.Column="1" Name="From" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" Height="Auto" PreviewTextInput="OnDatePreviewTextInput"/>
                     <Label Grid.Row="2" Grid.Column="0" Content="To:" HorizontalAlignment="Left" VerticalAlignment="Center" />
@@ -41,7 +42,9 @@
                     <TextBox Grid.Row="6" Grid.Column="1" Name="MinimumFeesPerOrder" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
                     <Label Grid.Row="7" Grid.Column="0" Content="Maximum fees per order ratio:" HorizontalAlignment="Left" VerticalAlignment="Center" />
                     <TextBox Grid.Row="7" Grid.Column="1" Name="MaximumFeesPerOrderRatio" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
-                    <Button Grid.Row="8" Grid.Column="1" Content="Run backtest" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="8,0,8,0" Margin="0,4,0,0"/>
+                    <Label Grid.Row="8" Grid.Column="0" Content="MongoDB connection string:" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="8" Grid.Column="1" Name="ConnectionString" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center" Width="120" PreviewTextInput="OnNumericPreviewTextInput"/>
+                    <Button Grid.Row="9" Grid.Column="1" Content="Run backtest" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="8,0,8,0" Margin="0,4,0,0"/>
                 </Grid>
             </TabItem>
             <TabItem Header="History">

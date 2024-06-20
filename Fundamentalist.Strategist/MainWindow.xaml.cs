@@ -1,21 +1,18 @@
-﻿using Fundamentalist.Backtest;
-using Fundamentalist.Backtest.Strategies;
-using System.Collections.ObjectModel;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace Fundamentalist.Strategist
 {
 	public partial class MainWindow : Window
 	{
-		public ObservableCollection<Strategy> Strategies { get; set; }
-
 		public MainWindow()
 		{
-			Strategies = new ObservableCollection<Strategy>();
-			Strategies.Add(new ClenowMomentumStrategy(new ClenowMomentumConfiguration()));
 			InitializeComponent();
+			DataContext = new MainViewModel();
+			Strategy.SelectedIndex = 0;
+			TextBox
 		}
 
 		private void OnDatePreviewTextInput(object sender, TextCompositionEventArgs e)
